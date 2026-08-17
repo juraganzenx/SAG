@@ -1,0 +1,57 @@
+--==================================================
+-- HUMANOID REPLACE - RUN ONCE
+--==================================================
+
+local Players = game:GetService("Players")
+local speaker = Players.LocalPlayer
+local Cam = workspace.CurrentCamera
+
+local Char = speaker.Character or speaker.CharacterAdded:Wait()
+local Human = Char:FindFirstChildWhichIsA("Humanoid")
+
+if not Human then
+    warn("Humanoid tidak ditemukan")
+    return
+end
+
+local Pos = Cam.CFrame
+
+-- Clone Humanoid
+local nHuman = Human:Clone()
+
+-- Parent dulu
+nHuman.Parent = Char
+
+-- Disable state
+pcall(function()
+    nHuman:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+    nHuman:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+    nHuman:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+end)
+
+nHuman.BreakJointsOnDeath = false
+
+-- Hapus humanoid lama
+Human:Destroy()
+
+-- Restore character & camera
+speaker.Character = Char
+Cam.CameraSubject = nHuman
+Cam.CFrame = Pos
+
+nHuman.DisplayDistanceType =
+    Enum.HumanoidDisplayDistanceType.None
+
+-- Refresh Animate
+local Animate = Char:FindFirstChild("Animate")
+
+if Animate then
+    Animate.Disabled = true
+    task.wait()
+    Animate.Disabled = false
+end
+
+-- Full HP
+nHuman.Health = nHuman.MaxHealth
+
+print("Done - dijalankan 1x")
