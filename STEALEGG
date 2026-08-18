@@ -26,7 +26,7 @@ local EGG_FOLDER_NAME = "AreaEggSlotsClient"
 
 local WALK_SPEED = 800
 
-local REACH_DISTANCE = 8
+local REACH_DISTANCE = 11
 
 local CARRY_DELAY = 0
 
