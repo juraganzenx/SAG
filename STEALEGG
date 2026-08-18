@@ -1,10 +1,12 @@
 --==================================================
--- AUTO EGG CARRY + AUTO PLACE
+-- AUTO EGG CARRY + AUTO PLACEa
 --
 -- FLOW:
 -- 1. CARI EGG VALID
--- 2. PRIORITAS SCALE TERBESAR
--- 3. JIKA SCALE SAMA -> X TERBESAR
+-- 2. PRIORITAS EGG LIMITED (CLASSNAME = HIGHLIGHT)
+-- 3. JIKA TIDAK ADA HIGHLIGHT:
+--    -> SCALE TERBESAR
+--    -> JIKA SCALE SAMA -> X TERBESAR
 -- 4. JALAN KE STARTAREA
 -- 5. JALAN KE EGG
 -- 6. CARRY EGG
@@ -17,11 +19,16 @@
 -- 13. JIKA BERHASIL -> CARI EGG BERIKUTNYA
 -- 14. JIKA TIDAK ADA EGG VALID -> SERVER HOP
 --
--- FILTER:
+-- PRIORITAS EGG:
+--
+-- PRIORITAS 1:
+-- ADA DESCENDANT DENGAN CLASSNAME "Highlight"
+-- -> TIDAK PEDULI SCALE
+-- -> TIDAK PEDULI WORLDPIVOT X
+--
+-- PRIORITAS 2:
 -- SCALE > 7
 -- WORLDPIVOT X > 1950
---
--- PRIORITAS:
 -- SCALE TERBESAR
 -- JIKA SCALE SAMA -> X TERBESAR
 --==================================================
@@ -75,7 +82,7 @@ local LOOP_DELAY = 2
 local CARRY_DELAY = 0
 
 --==================================================
--- EGG FILTER
+-- NORMAL EGG FILTER
 --==================================================
 
 local MIN_SCALE = 7
@@ -87,13 +94,10 @@ local MIN_WORLD_PIVOT_X = 1950
 
 local DELAY_BEFORE_PLACE = 0.1
 
--- Jumlah maksimum percobaan posisi Place
 local MAX_PLACE_ATTEMPTS = 50
 
--- Berapa lama menunggu Tool hilang setelah request Place
 local PLACE_VERIFY_TIMEOUT = 3
 
--- Delay antar retry
 local PLACE_RETRY_DELAY = 0.15
 
 --==================================================
@@ -400,17 +404,46 @@ local function GetEggWorldPivotX(Egg)
 end
 
 --==================================================
+-- CHECK LIMITED EGG
+--
+-- MENCARI CLASSNAME "Highlight"
+--
+-- TIDAK PEDULI NAMA OBJECT
+--==================================================
+
+local function HasHighlight(Egg)
+
+    if not Egg then
+        return false
+    end
+
+    for _, Object in ipairs(
+        Egg:GetDescendants()
+    ) do
+
+        if Object:IsA("Highlight") then
+
+            return true
+
+        end
+
+    end
+
+    return false
+
+end
+
+--==================================================
 -- GET BEST EGG
 --
--- PRIORITAS:
+-- PRIORITAS 1:
+-- LIMITED EGG
+-- CLASSNAME = Highlight
 --
--- 1. SCALE TERBESAR
--- 2. JIKA SCALE SAMA
---    -> WORLDPIVOT X TERBESAR
---
--- FILTER:
--- SCALE > MIN_SCALE
--- X > MIN_WORLD_PIVOT_X
+-- PRIORITAS 2:
+-- NORMAL EGG
+-- SCALE TERBESAR
+-- JIKA SCALE SAMA -> X TERBESAR
 --==================================================
 
 local function GetLargestScaledEgg()
@@ -429,6 +462,65 @@ local function GetLargestScaledEgg()
         return nil
 
     end
+
+    --==================================================
+    -- PASS 1
+    -- CARI LIMITED EGG
+    --==================================================
+
+    for _, Object in ipairs(
+        EggFolder:GetDescendants()
+    ) do
+
+        if Object:IsA("Model")
+            and HasHighlight(Object) then
+
+            print(
+                "=========================================="
+            )
+
+            print(
+                "[AUTO EGG] LIMITED EGG TERDETEKSI!"
+            )
+
+            print(
+                "[AUTO EGG] EGG:",
+                Object.Name
+            )
+
+            print(
+                "[AUTO EGG] CLASSNAME HIGHLIGHT: TRUE"
+            )
+
+            print(
+                "[AUTO EGG] Scale:",
+                GetEggScale(Object)
+            )
+
+            print(
+                "[AUTO EGG] WorldPivot X:",
+                GetEggWorldPivotX(Object)
+            )
+
+            print(
+                "=========================================="
+            )
+
+            -- Langsung pilih.
+            --
+            -- Scale tidak diperhatikan.
+            -- WorldPivot X tidak diperhatikan.
+
+            return Object
+
+        end
+
+    end
+
+    --==================================================
+    -- PASS 2
+    -- NORMAL EGG
+    --==================================================
 
     local SelectedEgg = nil
 
@@ -450,20 +542,18 @@ local function GetLargestScaledEgg()
             local PivotX =
                 GetEggWorldPivotX(Object)
 
-            --==========================================
-            -- VALID FILTER
-            --==========================================
+            --==================================================
+            -- NORMAL FILTER
+            --==================================================
 
             if Scale > MIN_SCALE
                 and PivotX > MIN_WORLD_PIVOT_X then
 
-                --======================================
-                -- PRIORITAS 1:
+                --==================================================
+                -- PRIORITAS:
                 -- SCALE TERBESAR
-                --
-                -- PRIORITAS 2:
                 -- SCALE SAMA -> X TERBESAR
-                --======================================
+                --==================================================
 
                 if Scale > LargestScale
                     or (
@@ -488,6 +578,10 @@ local function GetLargestScaledEgg()
 
     end
 
+    --==================================================
+    -- RESULT
+    --==================================================
+
     if SelectedEgg then
 
         print(
@@ -495,7 +589,7 @@ local function GetLargestScaledEgg()
         )
 
         print(
-            "[AUTO EGG] SELECTED EGG:",
+            "[AUTO EGG] SELECTED NORMAL EGG:",
             SelectedEgg.Name
         )
 
@@ -507,6 +601,10 @@ local function GetLargestScaledEgg()
         print(
             "[AUTO EGG] WORLD PIVOT X:",
             HighestPivotX
+        )
+
+        print(
+            "[AUTO EGG] LIMITED: FALSE"
         )
 
         print(
@@ -906,9 +1004,9 @@ local function GetRandomPetAreaPosition(
     local HalfSize =
         PetArea.Size / 2
 
-    --==============================================
+    --==================================================
     -- RANDOM X
-    --==============================================
+    --==================================================
 
     local RandomX =
         math.random()
@@ -917,9 +1015,9 @@ local function GetRandomPetAreaPosition(
         )
         - HalfSize.X
 
-    --==============================================
+    --==================================================
     -- RANDOM Z
-    --==============================================
+    --==================================================
 
     local RandomZ =
         math.random()
@@ -928,9 +1026,9 @@ local function GetRandomPetAreaPosition(
         )
         - HalfSize.Z
 
-    --==============================================
-    -- PADDING DARI EDGE
-    --==============================================
+    --==================================================
+    -- PADDING
+    --==================================================
 
     local Padding =
         0.5
@@ -957,9 +1055,9 @@ local function GetRandomPetAreaPosition(
 
     end
 
-    --==============================================
+    --==================================================
     -- POSISI DI PERMUKAAN ATAS
-    --==============================================
+    --==================================================
 
     local LocalPosition =
         Vector3.new(
@@ -1022,11 +1120,6 @@ end
 
 --==================================================
 -- PLACE EGG
---
--- RANDOM SELURUH PETAREA
---
--- BERHASIL HANYA JIKA:
--- EGG TOOL HILANG DARI CHARACTER
 --==================================================
 
 local function PlaceEgg(
@@ -1100,9 +1193,9 @@ local function PlaceEgg(
 
     for Attempt = 1, MAX_PLACE_ATTEMPTS do
 
-        --==============================================
-        -- CEK TOOL MASIH ADA
-        --==============================================
+        --==================================================
+        -- CEK TOOL
+        --==================================================
 
         local CurrentTool =
             GetEquippedEggTool()
@@ -1117,9 +1210,9 @@ local function PlaceEgg(
 
         end
 
-        --==============================================
-        -- RANDOM SELURUH PETAREA
-        --==============================================
+        --==================================================
+        -- RANDOM POSITION
+        --==================================================
 
         local WorldPosition =
             GetRandomPetAreaPosition(
@@ -1136,9 +1229,9 @@ local function PlaceEgg(
 
         end
 
-        --==============================================
+        --==================================================
         -- WORLD -> CENTERPOINT LOCAL CFRAME
-        --==============================================
+        --==================================================
 
         local LocalCFrame =
             CenterPoint.CFrame:ToObjectSpace(
@@ -1157,9 +1250,9 @@ local function PlaceEgg(
             WorldPosition
         )
 
-        --==============================================
+        --==================================================
         -- REQUEST PLACE
-        --==============================================
+        --==================================================
 
         local InvokeSuccess
         local Response1
@@ -1195,9 +1288,9 @@ local function PlaceEgg(
 
         end
 
-        --==============================================
+        --==================================================
         -- VERIFY
-        --==============================================
+        --==================================================
 
         local Placed =
             WaitUntilEggToolGone(
@@ -1227,9 +1320,9 @@ local function PlaceEgg(
 
         end
 
-        --==============================================
-        -- MASIH ADA TOOL
-        --==============================================
+        --==================================================
+        -- RETRY
+        --==================================================
 
         warn(
             "[AUTO EGG] Place belum berhasil."
@@ -1263,9 +1356,9 @@ end
 
 local function Process()
 
-    --==============================================
+    --==================================================
     -- 1. CARI EGG
-    --==============================================
+    --==================================================
 
     local Egg =
         GetLargestScaledEgg()
@@ -1278,9 +1371,9 @@ local function Process()
 
     end
 
-    --==============================================
-    -- 2. GET STARTAREA
-    --==============================================
+    --==================================================
+    -- 2. GET START AREA
+    --==================================================
 
     local StartArea =
         GetStartArea()
@@ -1295,9 +1388,9 @@ local function Process()
 
     end
 
-    --==============================================
+    --==================================================
     -- 3. KE STARTAREA
-    --==============================================
+    --==================================================
 
     print(
         "[AUTO EGG] STEP 1 -> StartArea"
@@ -1311,9 +1404,9 @@ local function Process()
 
     task.wait(0.2)
 
-    --==============================================
+    --==================================================
     -- 4. CEK EGG
-    --==============================================
+    --==================================================
 
     if not Egg
         or not Egg.Parent then
@@ -1326,34 +1419,66 @@ local function Process()
 
     end
 
+    --==================================================
+    -- 5. VALIDASI EGG
+    --==================================================
+
+    local IsLimitedEgg =
+        HasHighlight(Egg)
+
     local CurrentScale =
         GetEggScale(Egg)
 
     local CurrentPivotX =
         GetEggWorldPivotX(Egg)
 
-    if CurrentScale <= MIN_SCALE
-        or CurrentPivotX <= MIN_WORLD_PIVOT_X then
+    if not IsLimitedEgg then
 
-        warn(
-            "[AUTO EGG] Egg tidak lagi valid"
+        if CurrentScale <= MIN_SCALE
+            or CurrentPivotX <= MIN_WORLD_PIVOT_X then
+
+            warn(
+                "[AUTO EGG] Egg tidak lagi valid"
+            )
+
+            return
+
+        end
+
+    else
+
+        print(
+            "[AUTO EGG] Egg Limited terdeteksi."
         )
 
-        return
+        print(
+            "[AUTO EGG] Scale dan X tidak difilter."
+        )
 
     end
 
-    --==============================================
-    -- 5. KE EGG
-    --==============================================
+    --==================================================
+    -- 6. KE EGG
+    --==================================================
 
     print(
         "[AUTO EGG] STEP 2 -> Egg:",
-        Egg.Name,
-        "| Scale:",
-        CurrentScale,
-        "| X:",
+        Egg.Name
+    )
+
+    print(
+        "[AUTO EGG] Scale:",
+        CurrentScale
+    )
+
+    print(
+        "[AUTO EGG] X:",
         CurrentPivotX
+    )
+
+    print(
+        "[AUTO EGG] Limited:",
+        IsLimitedEgg
     )
 
     if not WalkTo(Egg) then
@@ -1364,9 +1489,9 @@ local function Process()
 
     task.wait(0.2)
 
-    --==============================================
-    -- 6. CARRY
-    --==============================================
+    --==================================================
+    -- 7. CARRY
+    --==================================================
 
     print(
         "[AUTO EGG] STEP 3 -> Carry"
@@ -1385,9 +1510,9 @@ local function Process()
         CARRY_DELAY
     )
 
-    --==============================================
-    -- 7. BALIK STARTAREA
-    --==============================================
+    --==================================================
+    -- 8. BALIK STARTAREA
+    --==================================================
 
     print(
         "[AUTO EGG] STEP 4 -> Return StartArea"
@@ -1401,9 +1526,9 @@ local function Process()
 
     task.wait(0.2)
 
-    --==============================================
-    -- 8. CEK EGG TOOL
-    --==============================================
+    --==================================================
+    -- 9. CEK EGG TOOL
+    --==================================================
 
     print(
         "[AUTO EGG] STEP 5 -> Check Egg Tool"
@@ -1428,9 +1553,9 @@ local function Process()
 
     end
 
-    --==============================================
-    -- 9. GET PETAREA
-    --==============================================
+    --==================================================
+    -- 10. GET PETAREA
+    --==================================================
 
     local PetArea =
         GetPetAreaData()
@@ -1441,9 +1566,9 @@ local function Process()
 
     end
 
-    --==============================================
-    -- 10. KE PETAREA
-    --==============================================
+    --==================================================
+    -- 11. KE PETAREA
+    --==================================================
 
     print(
         "[AUTO EGG] STEP 6 -> PetArea"
@@ -1459,9 +1584,9 @@ local function Process()
         DELAY_BEFORE_PLACE
     )
 
-    --==============================================
-    -- 11. CEK TOOL LAGI
-    --==============================================
+    --==================================================
+    -- 12. CEK TOOL LAGI
+    --==================================================
 
     EggTool =
         GetEquippedEggTool()
@@ -1476,9 +1601,9 @@ local function Process()
 
     end
 
-    --==============================================
-    -- 12. PLACE
-    --==============================================
+    --==================================================
+    -- 13. PLACE
+    --==================================================
 
     print(
         "[AUTO EGG] STEP 7 -> Place Egg"
@@ -1489,18 +1614,15 @@ local function Process()
             EggTool
         )
 
-    --==============================================
-    -- 13. PLACE BERHASIL
-    --==============================================
+    --==================================================
+    -- 14. BERHASIL
+    --==================================================
 
     if Placed then
 
         print(
             "[AUTO EGG] PLACE CONFIRMED"
         )
-
-        -- Hanya setelah Tool hilang
-        -- boleh mencari Egg berikutnya
 
         task.wait(
             LOOP_DELAY
@@ -1510,16 +1632,13 @@ local function Process()
 
     end
 
-    --==============================================
-    -- 14. PLACE BELUM BERHASIL
-    --==============================================
+    --==================================================
+    -- 15. PLACE BELUM BERHASIL
+    --==================================================
 
     warn(
         "[AUTO EGG] PLACE BELUM BERHASIL"
     )
-
-    -- Jangan pernah mengambil Egg baru
-    -- selama Tool masih ada.
 
     while true do
 
@@ -1583,7 +1702,6 @@ task.spawn(function()
 
     print(
         "=========================================="
-
     )
 
     print(
@@ -1596,11 +1714,29 @@ task.spawn(function()
     )
 
     print(
-        "1. SCALE TERBESAR"
+        "1. CLASSNAME HIGHLIGHT"
     )
 
     print(
-        "2. X TERBESAR JIKA SCALE SAMA"
+        "2. SCALE TERBESAR"
+    )
+
+    print(
+        "3. X TERBESAR JIKA SCALE SAMA"
+    )
+
+    print(
+        "NORMAL FILTER:"
+    )
+
+    print(
+        "SCALE >",
+        MIN_SCALE
+    )
+
+    print(
+        "WORLD PIVOT X >",
+        MIN_WORLD_PIVOT_X
     )
 
     print(
