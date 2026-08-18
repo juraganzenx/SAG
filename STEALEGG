@@ -24,9 +24,9 @@ local LocalPlayer = Players.LocalPlayer
 local START_AREA_NAME = "StartArea"
 local EGG_FOLDER_NAME = "AreaEggSlotsClient"
 
-local WALK_SPEED = 1000
+local WALK_SPEED = 800
 
-local REACH_DISTANCE = 12
+local REACH_DISTANCE = 8
 
 local CARRY_DELAY = 0
 
