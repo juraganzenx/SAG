@@ -1,14 +1,11 @@
 --==================================================
 -- AUTO EGG CARRY
--- COSMIC       > 1.5
--- PREHISTORIC  > 2
--- NORMAL       > 7
--- FOREST       BLACKLIST
+-- PIVOT SCALE > 5
 -- WALK SPEED 1000
 -- AUTO STOP WHEN REACHED
 -- ONLY 1 LARGEST SCALED EGG
 -- PUBLIC SERVER HOP IF NO VALID EGG
--- START DELAY 7 SECONDS
+-- START DELAY 5 SECONDS
 --==================================================
 
 local Players = game:GetService("Players")
@@ -29,39 +26,17 @@ local EGG_FOLDER_NAME = "AreaEggSlotsClient"
 
 local WALK_SPEED = 1000
 
--- Radius untuk dianggap sudah sampai egg
-local REACH_DISTANCE = 15
+local REACH_DISTANCE = 12
 
 local CARRY_DELAY = 0
 
 local LOOP_DELAY = 2
 
---==================================================
--- SCALE REQUIREMENTS
---==================================================
+-- Hanya ambil jika Scale > 5
+local MIN_SCALE = 4
 
--- Cosmic harus > 1.5
-local COSMIC_MIN_SCALE = 1.5
-
--- Prehistoric harus > 2
-local PREHISTORIC_MIN_SCALE = 2
-
--- Egg biasa harus > 7
-local NORMAL_MIN_SCALE = 4
-
---==================================================
--- EGG BLACKLIST
---==================================================
-
-local BLACKLIST_EGG_TYPES = {
-    Forest = true,
-}
-
---==================================================
--- START DELAY
---==================================================
-
-local START_DELAY = 7
+-- Delay awal sebelum script mulai
+local START_DELAY = 5
 
 --==================================================
 -- CHARACTER
@@ -74,9 +49,6 @@ local function GetCharacter()
 
 end
 
---==================================================
--- HUMANOID
---==================================================
 
 local function GetHumanoid()
 
@@ -86,9 +58,6 @@ local function GetHumanoid()
 
 end
 
---==================================================
--- ROOT
---==================================================
 
 local function GetRoot()
 
@@ -97,6 +66,7 @@ local function GetRoot()
     return Character:FindFirstChild("HumanoidRootPart")
 
 end
+
 
 --==================================================
 -- GET POSITION
@@ -124,65 +94,6 @@ local function GetPosition(Object)
 
 end
 
---==================================================
--- GET CLOSEST BASEPART POSITION
---==================================================
-
-local function GetClosestPosition(Object, RootPosition)
-
-    if not Object then
-        return nil
-    end
-
-    -- BasePart
-    if Object:IsA("BasePart") then
-
-        return Object.Position
-
-    end
-
-    -- Model
-    if Object:IsA("Model") then
-
-        local ClosestPosition = nil
-        local ClosestDistance = math.huge
-
-        for _, Part in ipairs(
-            Object:GetDescendants()
-        ) do
-
-            if Part:IsA("BasePart") then
-
-                local Distance =
-                    (
-                        RootPosition
-                        - Part.Position
-                    ).Magnitude
-
-                if Distance < ClosestDistance then
-
-                    ClosestDistance = Distance
-                    ClosestPosition = Part.Position
-
-                end
-
-            end
-
-        end
-
-        if ClosestPosition then
-
-            return ClosestPosition
-
-        end
-
-        return Object:GetPivot().Position
-
-    end
-
-    return nil
-
-end
 
 --==================================================
 -- STOP MOVEMENT
@@ -210,6 +121,7 @@ local function StopMovement()
 
     end
 
+
     if Root then
 
         Root.AssemblyLinearVelocity =
@@ -221,6 +133,7 @@ local function StopMovement()
     end
 
 end
+
 
 --==================================================
 -- WALK TO
@@ -239,21 +152,38 @@ local function WalkTo(Object)
 
     end
 
+
+    local Position =
+        GetPosition(Object)
+
+    if not Position then
+        return false
+    end
+
+
     Humanoid.WalkSpeed =
         WALK_SPEED
+
 
     print(
         "[AUTO EGG] Walking to:",
         Object.Name
     )
 
+
+    Humanoid:MoveTo(
+        Position
+    )
+
+
     local StartTime =
         tick()
+
 
     while true do
 
         --================================================
-        -- CHARACTER
+        -- CHECK CHARACTER
         --================================================
 
         Root =
@@ -267,8 +197,9 @@ local function WalkTo(Object)
 
         end
 
+
         --================================================
-        -- OBJECT
+        -- CHECK OBJECT
         --================================================
 
         if not Object
@@ -280,23 +211,6 @@ local function WalkTo(Object)
 
         end
 
-        --================================================
-        -- GET CLOSEST POSITION
-        --================================================
-
-        local TargetPosition =
-            GetClosestPosition(
-                Object,
-                Root.Position
-            )
-
-        if not TargetPosition then
-
-            StopMovement()
-
-            return false
-
-        end
 
         --================================================
         -- DISTANCE
@@ -305,8 +219,9 @@ local function WalkTo(Object)
         local Distance =
             (
                 Root.Position
-                - TargetPosition
+                - Position
             ).Magnitude
+
 
         --================================================
         -- REACHED
@@ -318,48 +233,23 @@ local function WalkTo(Object)
                 "[AUTO EGG] REACHED:",
                 Object.Name,
                 "| Distance:",
-                math.floor(
-                    Distance * 100
-                ) / 100
+                math.floor(Distance)
             )
 
-            -- STOP IMMEDIATELY
+
             StopMovement()
 
-            Humanoid:Move(
-                Vector3.zero,
-                false
-            )
-
-            Humanoid:MoveTo(
-                Root.Position
-            )
-
-            Root.AssemblyLinearVelocity =
-                Vector3.zero
-
-            Root.AssemblyAngularVelocity =
-                Vector3.zero
 
             RunService.Heartbeat:Wait()
 
-            -- STOP AGAIN
-            Root =
-                GetRoot()
 
-            if Root then
+            StopMovement()
 
-                Root.AssemblyLinearVelocity =
-                    Vector3.zero
-
-                Root.AssemblyAngularVelocity =
-                    Vector3.zero
-
-            end
 
             return true
 
         end
+
 
         --================================================
         -- TIMEOUT
@@ -372,25 +262,29 @@ local function WalkTo(Object)
                 Object.Name
             )
 
+
             StopMovement()
 
             return false
 
         end
 
+
         --================================================
         -- REFRESH MOVE
         --================================================
 
         Humanoid:MoveTo(
-            TargetPosition
+            Position
         )
+
 
         RunService.Heartbeat:Wait()
 
     end
 
 end
+
 
 --==================================================
 -- GET START AREA
@@ -405,6 +299,7 @@ local function GetStartArea()
 
 end
 
+
 --==================================================
 -- GET PIVOT SCALE
 --==================================================
@@ -418,12 +313,14 @@ local function GetEggScale(Egg)
 
     end
 
+
     local Success, Scale =
         pcall(function()
 
             return Egg:GetScale()
 
         end)
+
 
     if Success
         and Scale then
@@ -432,124 +329,15 @@ local function GetEggScale(Egg)
 
     end
 
+
     return 0
 
 end
 
---==================================================
--- CHECK BLACKLIST
---==================================================
-
-local function IsBlacklistedEgg(Egg)
-
-    if not Egg then
-        return false
-    end
-
-    local LowerName =
-        string.lower(
-            Egg.Name
-        )
-
-    for EggType in pairs(
-        BLACKLIST_EGG_TYPES
-    ) do
-
-        if string.find(
-            LowerName,
-            string.lower(EggType),
-            1,
-            true
-        ) then
-
-            return true
-
-        end
-
-    end
-
-    return false
-
-end
 
 --==================================================
--- GET EGG TYPE + REQUIRED SCALE
---==================================================
-
-local function GetEggRequirement(Egg)
-
-    if not Egg
-        or not Egg:IsA("Model") then
-
-        return "Unknown",
-            NORMAL_MIN_SCALE
-
-    end
-
-    local LowerName =
-        string.lower(
-            Egg.Name
-        )
-
-    --================================================
-    -- COSMIC
-    --================================================
-
-    if string.find(
-        LowerName,
-        "cosmic",
-        1,
-        true
-    ) then
-
-        return "Cosmic",
-            COSMIC_MIN_SCALE
-
-    end
-
-    --================================================
-    -- PREHISTORIC
-    --================================================
-
-    if string.find(
-        LowerName,
-        "prehistoric",
-        1,
-        true
-    ) then
-
-        return "Prehistoric",
-            PREHISTORIC_MIN_SCALE
-
-    end
-
-    --================================================
-    -- FOREST
-    --================================================
-
-    if string.find(
-        LowerName,
-        "forest",
-        1,
-        true
-    ) then
-
-        return "Forest",
-            math.huge
-
-    end
-
-    --================================================
-    -- NORMAL
-    --================================================
-
-    return "Normal",
-        NORMAL_MIN_SCALE
-
-end
-
---==================================================
--- GET LARGEST VALID EGG
+-- GET LARGEST EGG
+-- ONLY SCALE > MIN_SCALE
 --==================================================
 
 local function GetLargestScaledEgg()
@@ -558,6 +346,7 @@ local function GetLargestScaledEgg()
         Workspace:FindFirstChild(
             EGG_FOLDER_NAME
         )
+
 
     if not EggFolder then
 
@@ -569,10 +358,10 @@ local function GetLargestScaledEgg()
 
     end
 
+
     local LargestEgg = nil
-    local LargestScale = 0
-    local LargestType = nil
-    local LargestRequiredScale = nil
+    local LargestScale = MIN_SCALE
+
 
     --================================================
     -- SCAN ALL OBJECTS
@@ -584,72 +373,31 @@ local function GetLargestScaledEgg()
 
         if Object:IsA("Model") then
 
-            --================================================
-            -- BLACKLIST
-            --================================================
-
-            if IsBlacklistedEgg(Object) then
-
-                print(
-                    "[AUTO EGG] BLACKLIST:",
-                    Object.Name,
-                    "| Forest"
-                )
-
-                continue
-
-            end
-
-            --================================================
-            -- SCALE
-            --================================================
-
             local Scale =
                 GetEggScale(Object)
 
-            --================================================
-            -- TYPE
-            --================================================
-
-            local EggType,
-                RequiredScale =
-                GetEggRequirement(Object)
 
             print(
                 "[AUTO EGG] Found:",
                 Object.Name,
-                "| Type:",
-                EggType,
                 "| Pivot Scale:",
-                Scale,
-                "| Required >",
-                RequiredScale
+                Scale
             )
 
+
             --================================================
-            -- THRESHOLD
+            -- ONLY SCALE > MIN_SCALE
             --================================================
 
-            if Scale > RequiredScale then
+            if Scale > MIN_SCALE then
 
-                --================================================
-                -- TAKE LARGEST
-                --================================================
-
-                if not LargestEgg
-                    or Scale > LargestScale then
-
-                    LargestEgg =
-                        Object
+                if Scale > LargestScale then
 
                     LargestScale =
                         Scale
 
-                    LargestType =
-                        EggType
-
-                    LargestRequiredScale =
-                        RequiredScale
+                    LargestEgg =
+                        Object
 
                 end
 
@@ -658,6 +406,7 @@ local function GetLargestScaledEgg()
         end
 
     end
+
 
     --================================================
     -- RESULT
@@ -679,19 +428,8 @@ local function GetLargestScaledEgg()
         )
 
         print(
-            "[AUTO EGG] Type:",
-            LargestType
-        )
-
-        print(
             "[AUTO EGG] Pivot Scale:",
             LargestScale
-        )
-
-        print(
-            "[AUTO EGG] Required:",
-            ">",
-            LargestRequiredScale
         )
 
         print(
@@ -701,14 +439,17 @@ local function GetLargestScaledEgg()
     else
 
         warn(
-            "[AUTO EGG] Tidak ada Egg yang memenuhi threshold."
+            "[AUTO EGG] Tidak ada Egg dengan Pivot Scale > "
+                .. MIN_SCALE
         )
 
     end
 
+
     return LargestEgg
 
 end
+
 
 --==================================================
 -- GET PUBLIC SERVERS
@@ -717,8 +458,8 @@ end
 local function GetServers()
 
     local Servers = {}
-
     local Cursor = ""
+
 
     repeat
 
@@ -727,25 +468,24 @@ local function GetServers()
             .. game.PlaceId
             .. "/servers/Public?sortOrder=Asc&limit=100"
 
+
         if Cursor ~= "" then
 
             Url =
                 Url
                 .. "&cursor="
-                .. HttpService:UrlEncode(
-                    Cursor
-                )
+                .. HttpService:UrlEncode(Cursor)
 
         end
+
 
         local Success, Result =
             pcall(function()
 
-                return game:HttpGet(
-                    Url
-                )
+                return game:HttpGet(Url)
 
             end)
+
 
         if not Success then
 
@@ -758,15 +498,14 @@ local function GetServers()
 
         end
 
-        local DecodeSuccess,
-            Data =
+
+        local DecodeSuccess, Data =
             pcall(function()
 
-                return HttpService:JSONDecode(
-                    Result
-                )
+                return HttpService:JSONDecode(Result)
 
             end)
+
 
         if not DecodeSuccess then
 
@@ -778,12 +517,13 @@ local function GetServers()
 
         end
 
+
         for _, Server in ipairs(
             Data.data or {}
         ) do
 
             --================================================
-            -- SKIP CURRENT SERVER
+            -- SKIP SERVER SEKARANG
             --================================================
 
             if Server.id ~= game.JobId
@@ -798,19 +538,23 @@ local function GetServers()
 
         end
 
+
         Cursor =
-            Data.nextPageCursor
-            or ""
+            Data.nextPageCursor or ""
+
 
     until Cursor == ""
         or #Servers > 0
+
 
     return Servers
 
 end
 
+
 --==================================================
 -- SERVER HOP
+-- PUBLIC SERVER LAIN
 --==================================================
 
 local function ServerHop()
@@ -831,10 +575,13 @@ local function ServerHop()
         "=========================================="
     )
 
+
     StopMovement()
+
 
     local Servers =
         GetServers()
+
 
     if #Servers == 0 then
 
@@ -848,6 +595,7 @@ local function ServerHop()
 
     end
 
+
     --================================================
     -- RANDOM SERVER
     --================================================
@@ -859,6 +607,7 @@ local function ServerHop()
                 #Servers
             )
         ]
+
 
     print(
         "[AUTO EGG] Server ditemukan:"
@@ -876,12 +625,12 @@ local function ServerHop()
         Server.maxPlayers
     )
 
+
     --================================================
     -- TELEPORT
     --================================================
 
-    local Success,
-        Error =
+    local Success, Error =
         pcall(function()
 
             TeleportService:TeleportToPlaceInstance(
@@ -891,6 +640,7 @@ local function ServerHop()
             )
 
         end)
+
 
     if not Success then
 
@@ -905,6 +655,7 @@ local function ServerHop()
 
 end
 
+
 --==================================================
 -- CARRY EGG
 --==================================================
@@ -915,13 +666,16 @@ local function CarryEgg(Egg)
         return false
     end
 
+
     local Uid =
         Egg.Name
+
 
     print(
         "[AUTO EGG] Request Carry:",
         Uid
     )
+
 
     local Args = {
 
@@ -933,8 +687,8 @@ local function CarryEgg(Egg)
 
     }
 
-    local Success,
-        Result =
+
+    local Success, Result =
         pcall(function()
 
             return ReplicatedStorage
@@ -947,6 +701,7 @@ local function CarryEgg(Egg)
                 )
 
         end)
+
 
     if Success then
 
@@ -971,6 +726,7 @@ local function CarryEgg(Egg)
 
 end
 
+
 --==================================================
 -- MAIN PROCESS
 --==================================================
@@ -984,8 +740,9 @@ local function Process()
     local Egg =
         GetLargestScaledEgg()
 
+
     --================================================
-    -- 2. TIDAK ADA -> SERVER HOP
+    -- 2. TIDAK ADA -> PUBLIC SERVER HOP
     --================================================
 
     if not Egg then
@@ -996,12 +753,14 @@ local function Process()
 
     end
 
+
     --================================================
     -- 3. GET START AREA
     --================================================
 
     local StartArea =
         GetStartArea()
+
 
     if not StartArea then
 
@@ -1015,6 +774,7 @@ local function Process()
 
     end
 
+
     --================================================
     -- 4. JALAN KE START AREA
     --================================================
@@ -1023,8 +783,10 @@ local function Process()
         "[AUTO EGG] -> StartArea"
     )
 
+
     local StartReached =
         WalkTo(StartArea)
+
 
     if not StartReached then
 
@@ -1032,7 +794,9 @@ local function Process()
 
     end
 
+
     task.wait(0.2)
+
 
     --================================================
     -- 5. CEK EGG MASIH ADA
@@ -1049,6 +813,7 @@ local function Process()
 
     end
 
+
     --================================================
     -- 6. CEK SCALE TERBARU
     --================================================
@@ -1056,53 +821,18 @@ local function Process()
     local CurrentScale =
         GetEggScale(Egg)
 
-    local EggType,
-        RequiredScale =
-        GetEggRequirement(Egg)
 
-    print(
-        "[AUTO EGG] Current Type:",
-        EggType
-    )
-
-    print(
-        "[AUTO EGG] Current Scale:",
-        CurrentScale
-    )
-
-    print(
-        "[AUTO EGG] Required Scale: >",
-        RequiredScale
-    )
-
-    --================================================
-    -- DOUBLE CHECK BLACKLIST
-    --================================================
-
-    if IsBlacklistedEgg(Egg) then
+    if CurrentScale <= MIN_SCALE then
 
         print(
-            "[AUTO EGG] Egg masuk blacklist:",
-            Egg.Name
+            "[AUTO EGG] Scale berubah:",
+            CurrentScale
         )
 
         return
 
     end
 
-    --================================================
-    -- SCALE CHECK
-    --================================================
-
-    if CurrentScale <= RequiredScale then
-
-        print(
-            "[AUTO EGG] Scale tidak lagi memenuhi threshold."
-        )
-
-        return
-
-    end
 
     --================================================
     -- 7. JALAN KE EGG
@@ -1118,8 +848,10 @@ local function Process()
         CurrentScale
     )
 
+
     local Reached =
         WalkTo(Egg)
+
 
     --================================================
     -- 8. CARRY
@@ -1129,11 +861,10 @@ local function Process()
 
         task.wait(0.2)
 
-        -- STOP SEKALI LAGI SEBELUM CARRY
-        StopMovement()
 
         local Carried =
             CarryEgg(Egg)
+
 
         if Carried then
 
@@ -1142,6 +873,7 @@ local function Process()
             )
 
         end
+
 
         task.wait(
             CARRY_DELAY
@@ -1153,6 +885,7 @@ local function Process()
 
     end
 
+
     --================================================
     -- 9. BALIK START AREA
     --================================================
@@ -1161,13 +894,16 @@ local function Process()
         "[AUTO EGG] -> StartArea"
     )
 
+
     WalkTo(StartArea)
+
 
     task.wait(
         LOOP_DELAY
     )
 
 end
+
 
 --==================================================
 -- MAIN LOOP
@@ -1184,32 +920,41 @@ task.spawn(function()
     )
 
     print(
-        " COSMIC       >",
-        COSMIC_MIN_SCALE
+        " STARTING IN:",
+        START_DELAY,
+        "SECONDS"
     )
 
     print(
-        " PREHISTORIC  >",
-        PREHISTORIC_MIN_SCALE
+        "=========================================="
+    )
+
+
+    --================================================
+    -- INITIAL DELAY
+    --================================================
+
+    task.wait(
+        START_DELAY
+    )
+
+
+    print(
+        "=========================================="
     )
 
     print(
-        " NORMAL       >",
-        NORMAL_MIN_SCALE
+        " AUTO EGG CARRY STARTED"
     )
 
     print(
-        " FOREST       BLACKLIST"
+        " FILTER: PIVOT SCALE >",
+        MIN_SCALE
     )
 
     print(
         " WALK SPEED:",
         WALK_SPEED
-    )
-
-    print(
-        " REACH DISTANCE:",
-        REACH_DISTANCE
     )
 
     print(
@@ -1225,62 +970,9 @@ task.spawn(function()
     )
 
     print(
-        " STARTING IN:",
-        START_DELAY,
-        "SECONDS"
-    )
-
-    print(
         "=========================================="
     )
 
-    --================================================
-    -- INITIAL DELAY
-    --================================================
-
-    task.wait(
-        START_DELAY
-    )
-
-    print(
-        "=========================================="
-    )
-
-    print(
-        " AUTO EGG CARRY STARTED"
-    )
-
-    print(
-        " COSMIC       >",
-        COSMIC_MIN_SCALE
-    )
-
-    print(
-        " PREHISTORIC  >",
-        PREHISTORIC_MIN_SCALE
-    )
-
-    print(
-        " NORMAL       >",
-        NORMAL_MIN_SCALE
-    )
-
-    print(
-        " FOREST       BLACKLIST"
-    )
-
-    print(
-        " WALK SPEED:",
-        WALK_SPEED
-    )
-
-    print(
-        " ONLY 1 LARGEST EGG"
-    )
-
-    print(
-        "=========================================="
-    )
 
     --================================================
     -- LOOP
@@ -1288,9 +980,9 @@ task.spawn(function()
 
     while true do
 
-        local Success,
-            Error =
+        local Success, Error =
             pcall(Process)
+
 
         if not Success then
 
@@ -1299,7 +991,9 @@ task.spawn(function()
                 Error
             )
 
+
             StopMovement()
+
 
             task.wait(2)
 
