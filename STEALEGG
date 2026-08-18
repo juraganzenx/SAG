@@ -18,7 +18,7 @@
 -- 14. JIKA TIDAK ADA EGG VALID -> SERVER HOP
 --
 -- FILTER:
--- SCALE > 5
+-- SCALE > 7
 -- WORLDPIVOT X > 1950
 --
 -- PRIORITAS:
@@ -78,7 +78,7 @@ local CARRY_DELAY = 0
 -- EGG FILTER
 --==================================================
 
-local MIN_SCALE = 5
+local MIN_SCALE = 7
 local MIN_WORLD_PIVOT_X = 1950
 
 --==================================================
