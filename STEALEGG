@@ -33,7 +33,7 @@ local CARRY_DELAY = 0
 local LOOP_DELAY = 2
 
 -- Hanya ambil jika Scale > 5
-local MIN_SCALE = 4
+local MIN_SCALE = 6
 
 -- Delay awal sebelum script mulai
 local START_DELAY = 5
