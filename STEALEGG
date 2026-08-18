@@ -47,7 +47,7 @@ local COSMIC_MIN_SCALE = 1.5
 local PREHISTORIC_MIN_SCALE = 2
 
 -- Egg biasa harus > 7
-local NORMAL_MIN_SCALE = 7
+local NORMAL_MIN_SCALE = 4
 
 --==================================================
 -- EGG BLACKLIST
