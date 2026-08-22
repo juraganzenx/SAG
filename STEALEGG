@@ -1,4 +1,4 @@
---==================================================
+--3==================================================
 -- AUTO EGG CARRY + AUTO PLACE
 -- GUI ON/OFF + WALK/TWEEN
 --==================================================
@@ -55,7 +55,7 @@ local START_AREA_NAME = "StartArea"
 local EGG_FOLDER_NAME = "AreaEggSlotsClient"
 
 local WALK_SPEED = 800
-local REACH_DISTANCE = 11
+local REACH_DISTANCE = 3
 
 local START_DELAY = 5
 local LOOP_DELAY = 2
