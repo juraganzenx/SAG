@@ -2,7 +2,7 @@ while task.wait(0.1) do
     for _, v in ipairs(game:GetDescendants()) do
         if v:IsA("TextButton") and v.Name == "HatchButton" then
             pcall(function()
-                firesignal(v.MouseButton1Click)
+                v:Activate()
             end)
         end
     end
