@@ -20,14 +20,6 @@ for _, obj in ipairs(workspace:GetChildren()) do
     end
 end
 
--- Destroy semua Child di semua PlacedEggRenders
-for _, obj in ipairs(workspace:GetChildren()) do
-    if obj.Name == "PlacedEggRenders" then
-        for _, child in ipairs(obj:GetChildren()) do
-            child:Destroy()
-        end
-    end
-end
 
 -- Destroy semua Child di Stands.Models
 local stands = workspace:FindFirstChild("Stands")
