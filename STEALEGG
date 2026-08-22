@@ -78,7 +78,7 @@ local CARRY_DELAY = 0
 -- NORMAL EGG FILTER
 --==================================================
 
-local MIN_SCALE = 8
+local MIN_SCALE = 10
 local MIN_WORLD_PIVOT_X = 1950
 
 --==================================================
