@@ -1,4 +1,4 @@
---==================================================
+--=======================================0===========
 -- AUTO EGG CARRY + AUTO PLACE
 -- GUI ON/OFF + WALK/TWEEN + SAVE SETTINGS
 --==================================================
@@ -123,7 +123,7 @@ local RequestPlaceEggRemote =
 local START_AREA_NAME = "StartArea"
 local EGG_FOLDER_NAME = "AreaEggSlotsClient"
 
-local WALK_SPEED = 8000
+local WALK_SPEED = 800
 
 -- DIUBAH DARI 11 MENJADI 3
 local REACH_DISTANCE = 3
