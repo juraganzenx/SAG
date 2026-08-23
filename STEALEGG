@@ -130,7 +130,7 @@ local REACH_DISTANCE = 3
 
 local START_DELAY = 5
 local LOOP_DELAY = 2
-local CARRY_DELAY = 1
+local CARRY_DELAY = 0.3
 
 --==================================================
 -- NORMAL EGG FILTER
