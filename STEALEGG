@@ -126,11 +126,11 @@ local EGG_FOLDER_NAME = "AreaEggSlotsClient"
 local WALK_SPEED = 800
 
 -- DIUBAH DARI 11 MENJADI 3
-local REACH_DISTANCE = 3
+local REACH_DISTANCE = 11
 
 local START_DELAY = 5
 local LOOP_DELAY = 2
-local CARRY_DELAY = 0.3
+local CARRY_DELAY = 0.1
 
 --==================================================
 -- NORMAL EGG FILTER
@@ -145,7 +145,7 @@ local MIN_WORLD_PIVOT_X = 1950
 
 local DELAY_BEFORE_PLACE = 0.1
 local MAX_PLACE_ATTEMPTS = 50
-local PLACE_VERIFY_TIMEOUT = 3
+local PLACE_VERIFY_TIMEOUT = 1
 local PLACE_RETRY_DELAY = 0.15
 
 --==================================================
