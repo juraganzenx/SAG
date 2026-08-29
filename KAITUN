@@ -1,161 +1,129 @@
---Fusea
+--FUSE
 --==================================================
--- AUTO EGG CARRY + AUTO PLACE + AUTO HATCH
--- AUTO MONSTER PARASITE FEED
--- AUTO FLY MOVEMENT VERSION
--- AUTO FUSE WHEN NO EGG
--- AUTO TREADMILL WHEN NO EGG + NO 3 PET
+-- AUTO FUSE PET
+-- + AUTO EGG CARRY
+-- + AUTO PLACE
+-- + AUTO HATCH
+-- + AUTO MONSTER PARASITE FEED
+-- + AUTO TREADMILL
+-- + AUTO FLY
 --
--- FLOW:
+-- PRIORITY:
 --
--- FIND EGG
--- -> FLY START AREA
--- -> FLY EGG
--- -> CARRY
--- -> FLY START AREA
--- -> WAIT 3 SEC
--- -> CHECK EQUIPPED TOOL
+-- 1. FIND 3 SAME PET
+--    Weight < 1,000,000
+--    BLACKLIST Crane
 --
--- -> SCAN ottoko_store FOR MonsterParasiteVisual
+--    -> EXIT TREADMILL
+--    -> LOAD PET #1
+--    -> LOAD PET #2
+--    -> LOAD PET #3
+--    -> BEGIN FUSE
+--    -> WAIT
+--    -> FINISH REVEAL
+--    -> FIND FUSED EGG
+--    -> PLACE FUSED EGG
 --
--- -> IF PARASITE FOUND
---      -> FIND MONSTER MODEL
---      -> FLY TO MONSTER
---      -> ASK FEED
---      -> SKIP PLACE
---      -> NEXT EGG
+-- 2. IF NO FUSEABLE PET
 --
--- -> IF NO PARASITE
---      -> FLY OWN PLOT
---      -> PLACE
---      -> FIND OWN PLACED EGG
---      -> FLY TO EGG
---      -> TRIGGER PROXIMITY PROMPT
---      -> HATCH
---      -> AFTER 5 SEC -> FIND NEXT EGG
+--    -> FIND NORMAL/HIGHLIGHT EGG
 --
--- MOVEMENT:
--- - NO Humanoid:MoveTo()
--- - AUTO FLY
--- - BODY VELOCITY
--- - BODY GYRO
--- - MOVEMENT LOCK
--- - PROCESS LOCK
---==================================================
-
-
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local TeleportService = game:GetService("TeleportService")
-local HttpService = game:GetService("HttpService")
-local Workspace = game:GetService("Workspace")
-
-local LocalPlayer = Players.LocalPlayer
-
---==================================================
--- EGG PLACE MODULES
--- Menggunakan metode PlaceEgg yang sama persis dengan
--- script Auto Egg Carry + Auto Place yang sudah berhasil.
+--    -> IF EGG FOUND:
+--       -> EXIT TREADMILL
+--       -> FLY START AREA
+--       -> FLY EGG
+--       -> CARRY
+--       -> RETURN START
+--       -> WAIT
+--       -> CHECK TOOL
+--       -> CHECK PARASITE
+--
+--       -> PARASITE:
+--          -> FLY MONSTER
+--          -> FEED
+--          -> SKIP PLACE
+--
+--       -> NO PARASITE:
+--          -> FLY OWN PLOT
+--          -> PLACE
+--          -> HATCH
+--
+--    -> IF NO EGG:
+--       -> ENTER OWN TREADMILL
+--       -> WAIT
+--
+-- 3. MAIN LOOP ALWAYS RECHECK:
+--    FUSE -> EGG -> TREADMILL
+--
 --==================================================
 
-local EggToolDisplay = require(
-    ReplicatedStorage.Library.Client.Eggs.EggToolDisplay
-)
 
-local PlotCmds = require(
-    ReplicatedStorage.Library.Client.PlotCmds
-)
+--==================================================
+-- SERVICES
+--==================================================
 
-local Network =
-    ReplicatedStorage:WaitForChild("Network")
+local Players =
+    game:GetService("Players")
 
-local RequestPlaceEggRemote =
-    Network:WaitForChild("Eggs: RequestPlaceEgg")
+local ReplicatedStorage =
+    game:GetService("ReplicatedStorage")
+
+local RunService =
+    game:GetService("RunService")
+
+local TeleportService =
+    game:GetService("TeleportService")
+
+local HttpService =
+    game:GetService("HttpService")
+
+local Workspace =
+    game:GetService("Workspace")
+
+
+local LocalPlayer =
+    Players.LocalPlayer
 
 
 --==================================================
 -- CONFIG
 --==================================================
 
-local START_AREA_NAME = "StartArea"
-local EGG_FOLDER_NAME = "AreaEggSlotsClient"
+local MAX_WEIGHT =
+    1000000
 
 
 --==================================================
--- AUTO FLY
+-- FUSE CONFIG
 --==================================================
 
-local FLY_SPEED = 800
-local REACH_DISTANCE = 5
-local FLY_UPDATE_DELAY = 0.03
-local FLY_MAX_TIME = 120
+local FUSE_PROCESS_DELAY =
+    1
 
+local AFTER_FINISH_DELAY =
+    1
 
---==================================================
--- CARRY
---==================================================
-
-local CARRY_DELAY = 0
-local AFTER_CARRY_START_DELAY = 0.2
-
-local WAIT_AFTER_RETURN = 3
-local TOOL_CHECK_DELAY = 0.5
+local FUSED_EGG_TIMEOUT =
+    10
 
 
 --==================================================
--- PLACE
+-- EGG CONFIG
 --==================================================
 
-local FIXED_Y = -0.5
-local MARGIN = 2
+local START_AREA_NAME =
+    "StartArea"
 
-local PLACE_RETRY_DELAY = 0.5
-local WAIT_TOOL_GONE = 5
-
-local MIN_PLOT = 1
-local MAX_PLOT = 8
+local EGG_FOLDER_NAME =
+    "AreaEggSlotsClient"
 
 
---==================================================
--- HATCH
---==================================================
+local NORMAL_MIN_SCALE =
+    1
 
-local MAX_PROMPT_DISTANCE = 20
-local WALK_TO_EGG_DISTANCE = 4
+local NORMAL_MIN_WORLD_PIVOT_X =
+    2600
 
-local HATCH_MAX_TIME = 10
-local HATCH_RESUME_TIME = 5
-
-local PROMPT_CHECK_DELAY = 0.2
-
-
---==================================================
--- MAIN
---==================================================
-
-local START_DELAY = 5
-local LOOP_DELAY = 1
-
-
---==================================================
--- NORMAL EGG CONFIG
---==================================================
-
-local NormalEggConfig = {
-
-    Enabled = true,
-
-    MIN_SCALE = 1,
-
-    MIN_WORLD_PIVOT_X = 2600
-
-}
-
-
---==================================================
--- HIGHLIGHT EGG CONFIG
---==================================================
 
 local HighlightEggConfig = {
 
@@ -167,47 +135,117 @@ local HighlightEggConfig = {
 
 
 --==================================================
--- FUSE CONFIG
+-- AUTO FLY
 --==================================================
 
-local MAX_PET_WEIGHT = 1000000
-local FUSE_LOAD_DELAY = 1
-local FUSE_AFTER_BEGIN_DELAY = 3
-local FUSE_AFTER_REVEAL_DELAY = 1
-local FUSED_EGG_WAIT_TIMEOUT = 10
+local FLY_SPEED =
+    800
 
-local BLACKLIST = {
-    Crane = true
+local REACH_DISTANCE =
+    5
+
+local FLY_UPDATE_DELAY =
+    0.03
+
+local FLY_MAX_TIME =
+    120
+
+
+--==================================================
+-- CARRY
+--==================================================
+
+local AFTER_CARRY_START_DELAY =
+    0.2
+
+local CARRY_DELAY =
+    0
+
+local WAIT_AFTER_RETURN =
+    3
+
+local TOOL_CHECK_DELAY =
+    0.5
+
+
+--==================================================
+-- PLACE
+--==================================================
+
+local FIXED_Y =
+    -0.5
+
+local MARGIN =
+    2
+
+local PLACE_RETRY_DELAY =
+    0.5
+
+local WAIT_TOOL_GONE =
+    5
+
+local MIN_PLOT =
+    1
+
+local MAX_PLOT =
+    8
+
+
+--==================================================
+-- HATCH
+--==================================================
+
+local MAX_PROMPT_DISTANCE =
+    20
+
+local WALK_TO_EGG_DISTANCE =
+    4
+
+local HATCH_MAX_TIME =
+    10
+
+local HATCH_RESUME_TIME =
+    5
+
+local PROMPT_CHECK_DELAY =
+    0.2
+
+
+--==================================================
+-- TREADMILL
+--==================================================
+
+local TREADMILL_NAME =
+    "TreadmillBottom"
+
+local TREADMILL_FLY_DISTANCE =
+    5
+
+local TREADMILL_CHECK_DELAY =
+    2
+
+
+--==================================================
+-- MAIN
+--==================================================
+
+local LOOP_DELAY =
+    1
+
+
+--==================================================
+-- BLACKLIST
+--==================================================
+
+local Blacklist = {
+
+    ["Crane"] = true,
+
 }
 
---==================================================
--- TREADMILL CONFIG
---==================================================
-
-local TREADMILL_NAME = "TreadmillBottom"
-local TREADMILL_FLY_DISTANCE = 5
-
 
 --==================================================
--- REMOTES
---==================================================
-
-local CarryEggRemote =
-    ReplicatedStorage
-        :WaitForChild("Packages")
-        :WaitForChild("Networking")
-        :WaitForChild("RF/EggWorld/AskFieldEggCarry")
-
-
-local PlaceEggRemote =
-    ReplicatedStorage
-        :WaitForChild("Packages")
-        :WaitForChild("Networking")
-        :WaitForChild("RF/EggWorld/AskPlaceEgg")
-
-
---==================================================
--- FUSERY REMOTES
+-- NETWORKING
 --==================================================
 
 local Networking =
@@ -215,20 +253,54 @@ local Networking =
         :WaitForChild("Packages")
         :WaitForChild("Networking")
 
+
+--==================================================
+-- FUSE REMOTES
+--==================================================
+
 local LoadPet =
     Networking:WaitForChild(
         "RF/Fusery/LoadPet"
     )
+
 
 local BeginFuse =
     Networking:WaitForChild(
         "RF/Fusery/BeginFuse"
     )
 
+
 local FinishReveal =
     Networking:WaitForChild(
         "RF/Fusery/FinishReveal"
     )
+
+
+--==================================================
+-- EGG REMOTES
+--==================================================
+
+local CarryEggRemote =
+    Networking:WaitForChild(
+        "RF/EggWorld/AskFieldEggCarry"
+    )
+
+
+local PlaceEggRemote =
+    Networking:WaitForChild(
+        "RF/EggWorld/AskPlaceEgg"
+    )
+
+
+--==================================================
+-- PARASITE REMOTE
+--==================================================
+
+local MonsterFeedRemote =
+    Networking:WaitForChild(
+        "RF/MonsterParasite/AskFeed"
+    )
+
 
 --==================================================
 -- TREADMILL REMOTES
@@ -239,6 +311,7 @@ local TreadmillWearRemote =
         "RF/Treadmill/AskWearStill"
     )
 
+
 local TreadmillDoffRemote =
     Networking:WaitForChild(
         "RF/Treadmill/AskDoff"
@@ -246,27 +319,20 @@ local TreadmillDoffRemote =
 
 
 --==================================================
--- MONSTER PARASITE REMOTE
+-- STATE
 --==================================================
 
-local MonsterFeedRemote =
-    ReplicatedStorage
-        :WaitForChild("Packages")
-        :WaitForChild("Networking")
-        :WaitForChild("RF/MonsterParasite/AskFeed")
+local ProcessRunning =
+    false
 
+local MovementOwner =
+    nil
 
---==================================================
--- LOCK SYSTEM
---==================================================
+local HatchRunning =
+    false
 
-local ProcessRunning = false
-
-local MovementOwner = nil
-
-local HatchRunning = false
-
-local TreadmillRunning = false
+local TreadmillRunning =
+    false
 
 
 --==================================================
@@ -282,7 +348,8 @@ local function AcquireMovementLock(Name)
     end
 
 
-    MovementOwner = Name
+    MovementOwner =
+        Name
 
 
     print(
@@ -305,16 +372,11 @@ local function ReleaseMovementLock(Name)
             Name
         )
 
-        MovementOwner = nil
+
+        MovementOwner =
+            nil
 
     end
-
-end
-
-
-local function GetMovementOwner()
-
-    return MovementOwner
 
 end
 
@@ -371,7 +433,7 @@ end
 
 
 --==================================================
--- STOP AUTO FLY
+-- STOP FLY
 --==================================================
 
 local function StopFly()
@@ -385,7 +447,6 @@ local function StopFly()
         Root.AssemblyLinearVelocity =
             Vector3.zero
 
-
         Root.AssemblyAngularVelocity =
             Vector3.zero
 
@@ -395,7 +456,7 @@ end
 
 
 --==================================================
--- AUTO FLY TO POSITION
+-- AUTO FLY
 --==================================================
 
 local function AutoFlyToPosition(
@@ -412,18 +473,12 @@ local function AutoFlyToPosition(
 
 
     Distance =
-        Distance
-        or REACH_DISTANCE
+        Distance or REACH_DISTANCE
 
 
     LockName =
-        LockName
-        or "AUTO_FLY"
+        LockName or "AUTO_FLY"
 
-
-    --================================================
-    -- MOVEMENT LOCK
-    --================================================
 
     if not AcquireMovementLock(
         LockName
@@ -431,7 +486,7 @@ local function AutoFlyToPosition(
 
         warn(
             "[AUTO FLY] Movement busy:",
-            GetMovementOwner(),
+            MovementOwner,
             "| Requested:",
             LockName
         )
@@ -473,10 +528,6 @@ local function AutoFlyToPosition(
     )
 
 
-    --================================================
-    -- SAVE HUMANOID STATE
-    --================================================
-
     local OldPlatformStand =
         Humanoid.PlatformStand
 
@@ -502,7 +553,7 @@ local function AutoFlyToPosition(
 
 
     BG.Name =
-        "AutoEggFlyGyro"
+        "AutoFuseEggFlyGyro"
 
 
     BG.P =
@@ -534,7 +585,7 @@ local function AutoFlyToPosition(
 
 
     BV.Name =
-        "AutoEggFlyVelocity"
+        "AutoFuseEggFlyVelocity"
 
 
     BV.MaxForce =
@@ -553,7 +604,8 @@ local function AutoFlyToPosition(
         Root
 
 
-    local Success = false
+    local Success =
+        false
 
 
     local StartTime =
@@ -625,7 +677,8 @@ local function AutoFlyToPosition(
             )
 
 
-            Success = true
+            Success =
+                true
 
             break
 
@@ -675,17 +728,12 @@ local function AutoFlyToPosition(
         -- FACE TARGET
         --============================================
 
-        local LookPosition =
-            Root.Position +
-            Direction
-
-
         if Direction.Magnitude > 0 then
 
             BG.CFrame =
                 CFrame.lookAt(
                     Root.Position,
-                    LookPosition
+                    Root.Position + Direction
                 )
 
         end
@@ -725,10 +773,6 @@ local function AutoFlyToPosition(
 
     end
 
-
-    --================================================
-    -- RESTORE HUMANOID
-    --================================================
 
     Humanoid =
         GetHumanoid()
@@ -817,7 +861,8 @@ end
 
 local function FlyToObject(
     Object,
-    Distance
+    Distance,
+    LockName
 )
 
     if not Object then
@@ -825,11 +870,6 @@ local function FlyToObject(
         return false
 
     end
-
-
-    Distance =
-        Distance
-        or REACH_DISTANCE
 
 
     local Position =
@@ -848,21 +888,902 @@ local function FlyToObject(
     end
 
 
-    local LockName =
-        "MAIN:" .. Object.Name
-
-
     return AutoFlyToPosition(
         Position,
-        Distance,
-        LockName
+        Distance or REACH_DISTANCE,
+        LockName or ("MAIN:" .. Object.Name)
     )
 
 end
 
 
 --==================================================
--- GET START AREA
+-- GET BACKPACK
+--==================================================
+
+local function GetBackpack()
+
+    return LocalPlayer:FindFirstChild(
+        "Backpack"
+    )
+
+end
+
+
+--==================================================
+-- GET EQUIPPED TOOL
+--==================================================
+
+local function GetEquippedTool()
+
+    local CharacterFolder =
+        Workspace:FindFirstChild(
+            LocalPlayer.Name
+        )
+
+
+    if not CharacterFolder then
+
+        return nil
+
+    end
+
+
+    for _, Object in ipairs(
+        CharacterFolder:GetChildren()
+    ) do
+
+        if Object:IsA("Tool") then
+
+            return Object
+
+        end
+
+    end
+
+
+    return nil
+
+end
+
+
+--==================================================
+-- FIND 3 SAME PET
+--
+-- IMPORTANT:
+-- hanya mencari.
+-- tidak menunggu.
+--
+-- Kalau tidak ada:
+-- return nil
+--
+-- supaya sistem bisa lanjut ke EGG.
+--==================================================
+
+local function FindThreeSamePets()
+
+    local Backpack =
+        GetBackpack()
+
+
+    if not Backpack then
+
+        return nil
+
+    end
+
+
+    local Groups =
+        {}
+
+
+    for _, Tool in ipairs(
+        Backpack:GetChildren()
+    ) do
+
+        if Tool:IsA("Tool") then
+
+            --========================================
+            -- BLACKLIST
+            --========================================
+
+            if Blacklist[
+                Tool.Name
+            ] then
+
+                continue
+
+            end
+
+
+            local Weight =
+                Tool:GetAttribute(
+                    "Weight"
+                )
+
+
+            local UID =
+                Tool:GetAttribute(
+                    "UID"
+                )
+
+
+            if typeof(Weight) == "number"
+                and Weight < MAX_WEIGHT
+                and typeof(UID) == "string"
+                and UID ~= "" then
+
+
+                if not Groups[
+                    Tool.Name
+                ] then
+
+                    Groups[
+                        Tool.Name
+                    ] = {}
+
+                end
+
+
+                table.insert(
+                    Groups[
+                        Tool.Name
+                    ],
+                    Tool
+                )
+
+            end
+
+        end
+
+    end
+
+
+    --==============================================
+    -- FIND 3 SAME
+    --==============================================
+
+    for Name, Tools in pairs(
+        Groups
+    ) do
+
+        if #Tools >= 3 then
+
+            print(
+                "=========================================="
+            )
+
+
+            print(
+                "[FUSE] FOUND 3 SAME PET"
+            )
+
+
+            print(
+                "[FUSE] NAME:",
+                Name
+            )
+
+
+            for i = 1, 3 do
+
+                print(
+                    "[FUSE]",
+                    i,
+                    "| Name:",
+                    Tools[i].Name,
+                    "| Weight:",
+                    Tools[i]:GetAttribute(
+                        "Weight"
+                    ),
+                    "| UID:",
+                    Tools[i]:GetAttribute(
+                        "UID"
+                    )
+                )
+
+            end
+
+
+            print(
+                "=========================================="
+            )
+
+
+            return
+                Tools[1],
+                Tools[2],
+                Tools[3]
+
+        end
+
+    end
+
+
+    return nil
+
+end
+
+
+--==================================================
+-- LOAD PET
+--==================================================
+
+local function LoadOnePet(
+    Tool,
+    Index
+)
+
+    if not Tool
+        or not Tool.Parent then
+
+        warn(
+            "[FUSE] Pet #" .. Index ..
+            " sudah tidak ada."
+        )
+
+        return false
+
+    end
+
+
+    local UID =
+        Tool:GetAttribute(
+            "UID"
+        )
+
+
+    if not UID then
+
+        warn(
+            "[FUSE] UID tidak ditemukan:",
+            Tool.Name
+        )
+
+        return false
+
+    end
+
+
+    print(
+        "------------------------------------------"
+    )
+
+
+    print(
+        "[FUSE] LOAD PET #" .. Index
+    )
+
+
+    print(
+        "[FUSE] Name:",
+        Tool.Name
+    )
+
+
+    print(
+        "[FUSE] Weight:",
+        Tool:GetAttribute(
+            "Weight"
+        )
+    )
+
+
+    print(
+        "[FUSE] UID:",
+        UID
+    )
+
+
+    local Success, Result =
+        pcall(function()
+
+            return LoadPet:InvokeServer(
+                UID
+            )
+
+        end)
+
+
+    print(
+        "[FUSE] LoadPet Success:",
+        Success
+    )
+
+
+    print(
+        "[FUSE] LoadPet Result:",
+        Result
+    )
+
+
+    if not Success then
+
+        warn(
+            "[FUSE] LoadPet ERROR"
+        )
+
+        return false
+
+    end
+
+
+    task.wait(
+        FUSE_PROCESS_DELAY
+    )
+
+
+    return true
+
+end
+
+
+--==================================================
+-- BEGIN FUSE
+--==================================================
+
+local function StartFuse()
+
+    print(
+        "=========================================="
+    )
+
+
+    print(
+        "[FUSE] BEGIN FUSE"
+    )
+
+
+    print(
+        "=========================================="
+    )
+
+
+    local Success, Result =
+        pcall(function()
+
+            return BeginFuse:
+                InvokeServer()
+
+        end)
+
+
+    print(
+        "[FUSE] BeginFuse Success:",
+        Success
+    )
+
+
+    print(
+        "[FUSE] BeginFuse Result:",
+        Result
+    )
+
+
+    if not Success then
+
+        warn(
+            "[FUSE] BeginFuse ERROR"
+        )
+
+        return false
+
+    end
+
+
+    return true
+
+end
+
+
+--==================================================
+-- FINISH REVEAL
+--==================================================
+
+local function FinishFuse()
+
+    print(
+        "=========================================="
+    )
+
+
+    print(
+        "[FUSE] FINISH REVEAL"
+    )
+
+
+    print(
+        "=========================================="
+    )
+
+
+    local Success, Result =
+        pcall(function()
+
+            return FinishReveal:
+                InvokeServer()
+
+        end)
+
+
+    print(
+        "[FUSE] FinishReveal Success:",
+        Success
+    )
+
+
+    print(
+        "[FUSE] FinishReveal Result:",
+        Result
+    )
+
+
+    if not Success then
+
+        warn(
+            "[FUSE] FinishReveal ERROR"
+        )
+
+        return false
+
+    end
+
+
+    task.wait(
+        AFTER_FINISH_DELAY
+    )
+
+
+    return true
+
+end
+
+
+--==================================================
+-- WAIT FUSED EGG
+--==================================================
+
+local function WaitForFusedEgg(
+    Timeout
+)
+
+    local StartTime =
+        tick()
+
+
+    while tick() - StartTime <
+        Timeout do
+
+
+        --============================================
+        -- EQUIPPED
+        --============================================
+
+        local Equipped =
+            GetEquippedTool()
+
+
+        if Equipped then
+
+            print(
+                "[FUSE] FUSED RESULT EQUIPPED:",
+                Equipped.Name
+            )
+
+
+            return Equipped
+
+        end
+
+
+        --============================================
+        -- BACKPACK
+        --============================================
+
+        local Backpack =
+            GetBackpack()
+
+
+        if Backpack then
+
+            for _, Object in ipairs(
+                Backpack:GetChildren()
+            ) do
+
+                if Object:IsA("Tool") then
+
+                    print(
+                        "[FUSE] FUSED RESULT FOUND:",
+                        Object.Name
+                    )
+
+
+                    return Object
+
+                end
+
+            end
+
+        end
+
+
+        task.wait(
+            0.2
+        )
+
+    end
+
+
+    warn(
+        "[FUSE] Fused egg timeout."
+    )
+
+
+    return nil
+
+end
+
+
+--==================================================
+-- GET OWN PLOT
+--==================================================
+
+local function GetMyPlot()
+
+    local Plots =
+        Workspace:FindFirstChild(
+            "Plots"
+        )
+
+
+    if not Plots then
+
+        warn(
+            "[PLOT] workspace.Plots tidak ditemukan."
+        )
+
+        return nil
+
+    end
+
+
+    for PlotNumber =
+        MIN_PLOT,
+        MAX_PLOT do
+
+
+        local Plot =
+            Plots:FindFirstChild(
+                tostring(PlotNumber)
+            )
+
+
+        if Plot then
+
+            local PlotSign =
+                Plot:FindFirstChild(
+                    "PlotSign"
+                )
+
+
+            if PlotSign then
+
+                local PlayerPlotSign =
+                    PlotSign:FindFirstChild(
+                        "PlayerPlotSign"
+                    )
+
+
+                if PlayerPlotSign then
+
+                    local Frame =
+                        PlayerPlotSign:FindFirstChild(
+                            "Frame"
+                        )
+
+
+                    if Frame then
+
+                        local PlayerName =
+                            Frame:FindFirstChild(
+                                "PlayerName"
+                            )
+
+
+                        if PlayerName then
+
+                            if PlayerName.Text ==
+                                LocalPlayer.Name then
+
+
+                                print(
+                                    "[PLOT] MY PLOT:",
+                                    Plot.Name
+                                )
+
+
+                                return Plot
+
+                            end
+
+                        end
+
+                    end
+
+                end
+
+            end
+
+        end
+
+    end
+
+
+    warn(
+        "[PLOT] Plot milik sendiri tidak ditemukan."
+    )
+
+
+    return nil
+
+end
+
+
+--==================================================
+-- TREADMILL
+--==================================================
+
+local function GetMyTreadmill()
+
+    local Plot =
+        GetMyPlot()
+
+
+    if not Plot then
+
+        return nil
+
+    end
+
+
+    local Treadmill =
+        Plot:FindFirstChild(
+            TREADMILL_NAME,
+            true
+        )
+
+
+    if not Treadmill then
+
+        warn(
+            "[TREADMILL] Tidak ditemukan:",
+            TREADMILL_NAME
+        )
+
+        return nil
+
+    end
+
+
+    print(
+        "[TREADMILL] FOUND:",
+        Treadmill:GetFullName()
+    )
+
+
+    return Treadmill
+
+end
+
+
+--==================================================
+-- ENTER TREADMILL
+--==================================================
+
+local function EnterTreadmill()
+
+    if TreadmillRunning then
+
+        return true
+
+    end
+
+
+    local Treadmill =
+        GetMyTreadmill()
+
+
+    if not Treadmill then
+
+        return false
+
+    end
+
+
+    print(
+        "=========================================="
+    )
+
+
+    print(
+        "[TREADMILL] NO EGG"
+    )
+
+
+    print(
+        "[TREADMILL] NO FUSEABLE PET"
+    )
+
+
+    print(
+        "[TREADMILL] -> FLY TREADMILL"
+    )
+
+
+    local Reached =
+        FlyToObject(
+            Treadmill,
+            TREADMILL_FLY_DISTANCE,
+            "TREADMILL"
+        )
+
+
+    if not Reached then
+
+        warn(
+            "[TREADMILL] Gagal fly."
+        )
+
+        return false
+
+    end
+
+
+    task.wait(0.2)
+
+
+    print(
+        "[TREADMILL] -> ASK WEAR STILL"
+    )
+
+
+    local Success, Result =
+        pcall(function()
+
+            return TreadmillWearRemote:
+                InvokeServer()
+
+        end)
+
+
+    print(
+        "[TREADMILL] SUCCESS:",
+        Success
+    )
+
+
+    print(
+        "[TREADMILL] RESULT:",
+        Result
+    )
+
+
+    if not Success then
+
+        warn(
+            "[TREADMILL] Wear error:",
+            Result
+        )
+
+        return false
+
+    end
+
+
+    TreadmillRunning =
+        true
+
+
+    print(
+        "[TREADMILL] BERHASIL MASUK"
+    )
+
+
+    print(
+        "=========================================="
+    )
+
+
+    return true
+
+end
+
+
+--==================================================
+-- EXIT TREADMILL
+--==================================================
+
+local function ExitTreadmill()
+
+    if not TreadmillRunning then
+
+        return true
+
+    end
+
+
+    print(
+        "=========================================="
+    )
+
+
+    print(
+        "[TREADMILL] TASK AVAILABLE"
+    )
+
+
+    print(
+        "[TREADMILL] -> ASK DOFF"
+    )
+
+
+    local Success, Result =
+        pcall(function()
+
+            return TreadmillDoffRemote:
+                InvokeServer()
+
+        end)
+
+
+    print(
+        "[TREADMILL] DOFF SUCCESS:",
+        Success
+    )
+
+
+    print(
+        "[TREADMILL] DOFF RESULT:",
+        Result
+    )
+
+
+    if not Success then
+
+        warn(
+            "[TREADMILL] Doff error:",
+            Result
+        )
+
+        return false
+
+    end
+
+
+    TreadmillRunning =
+        false
+
+
+    task.wait(0.2)
+
+
+    print(
+        "[TREADMILL] BERHASIL KELUAR"
+    )
+
+
+    print(
+        "=========================================="
+    )
+
+
+    return true
+
+end
+
+
+--==================================================
+-- START AREA
 --==================================================
 
 local function GetStartArea()
@@ -910,7 +1831,7 @@ end
 
 
 --==================================================
--- EGG PIVOT X
+-- EGG WORLD PIVOT X
 --==================================================
 
 local function GetEggWorldPivotX(Egg)
@@ -944,7 +1865,7 @@ end
 
 
 --==================================================
--- HAS HIGHLIGHT
+-- HIGHLIGHT
 --==================================================
 
 local function HasHighlight(Egg)
@@ -1003,10 +1924,6 @@ local function GetHighlightEgg()
 
     if not EggFolder then
 
-        warn(
-            "[AUTO EGG] AreaEggSlotsClient tidak ditemukan"
-        )
-
         return nil
 
     end
@@ -1021,9 +1938,10 @@ local function GetHighlightEgg()
             if HasHighlight(Object) then
 
                 print(
-                    "[AUTO EGG] HIGHLIGHT EGG FOUND:",
+                    "[AUTO EGG] HIGHLIGHT EGG:",
                     Object.Name
                 )
+
 
                 return Object
 
@@ -1045,13 +1963,6 @@ end
 
 local function GetLargestNormalEgg()
 
-    if not NormalEggConfig.Enabled then
-
-        return nil
-
-    end
-
-
     local EggFolder =
         Workspace:FindFirstChild(
             EGG_FOLDER_NAME
@@ -1065,15 +1976,16 @@ local function GetLargestNormalEgg()
     end
 
 
-    local SelectedEgg = nil
+    local SelectedEgg =
+        nil
 
 
     local LargestScale =
-        NormalEggConfig.MIN_SCALE
+        NORMAL_MIN_SCALE
 
 
     local HighestPivotX =
-        NormalEggConfig.MIN_WORLD_PIVOT_X
+        NORMAL_MIN_WORLD_PIVOT_X
 
 
     for _, Object in ipairs(
@@ -1085,17 +1997,21 @@ local function GetLargestNormalEgg()
             if not HasHighlight(Object) then
 
                 local Scale =
-                    GetEggScale(Object)
+                    GetEggScale(
+                        Object
+                    )
 
 
                 local PivotX =
-                    GetEggWorldPivotX(Object)
+                    GetEggWorldPivotX(
+                        Object
+                    )
 
 
                 if Scale >
-                    NormalEggConfig.MIN_SCALE
+                    NORMAL_MIN_SCALE
                     and PivotX >
-                    NormalEggConfig.MIN_WORLD_PIVOT_X then
+                    NORMAL_MIN_WORLD_PIVOT_X then
 
 
                     if Scale >
@@ -1139,7 +2055,7 @@ local function GetLargestNormalEgg()
     if SelectedEgg then
 
         print(
-            "[AUTO EGG] NORMAL EGG SELECTED:",
+            "[AUTO EGG] NORMAL EGG:",
             SelectedEgg.Name,
             "| Scale:",
             LargestScale,
@@ -1161,6 +2077,10 @@ end
 
 local function GetBestEgg()
 
+    --==============================================
+    -- HIGHLIGHT FIRST
+    --==============================================
+
     local HighlightEgg =
         GetHighlightEgg()
 
@@ -1171,10 +2091,15 @@ local function GetBestEgg()
             "[AUTO EGG] PRIORITY = HIGHLIGHT"
         )
 
+
         return HighlightEgg
 
     end
 
+
+    --==============================================
+    -- NORMAL
+    --==============================================
 
     local NormalEgg =
         GetLargestNormalEgg()
@@ -1186,44 +2111,8 @@ local function GetBestEgg()
             "[AUTO EGG] PRIORITY = NORMAL"
         )
 
+
         return NormalEgg
-
-    end
-
-
-    return nil
-
-end
-
-
---==================================================
--- GET EQUIPPED TOOL
---==================================================
-
-local function GetEquippedTool()
-
-    local CharacterFolder =
-        Workspace:FindFirstChild(
-            LocalPlayer.Name
-        )
-
-
-    if not CharacterFolder then
-
-        return nil
-
-    end
-
-
-    for _, Object in ipairs(
-        CharacterFolder:GetChildren()
-    ) do
-
-        if Object:IsA("Tool") then
-
-            return Object
-
-        end
 
     end
 
@@ -1259,6 +2148,7 @@ local function WaitForEquippedTool(
                 "[AUTO EGG] TOOL EQUIPPED:",
                 Tool.Name
             )
+
 
             return Tool
 
@@ -1321,7 +2211,8 @@ local function CarryEgg(Egg)
 
         [1] = {
 
-            ["Uid"] = UID
+            ["Uid"] =
+                UID
 
         }
 
@@ -1331,9 +2222,10 @@ local function CarryEgg(Egg)
     local Success, Result =
         pcall(function()
 
-            return CarryEggRemote:InvokeServer(
-                unpack(Args)
-            )
+            return CarryEggRemote:
+                InvokeServer(
+                    unpack(Args)
+                )
 
         end)
 
@@ -1353,7 +2245,7 @@ local function CarryEgg(Egg)
     if not Success then
 
         warn(
-            "[AUTO EGG] Carry error:",
+            "[AUTO EGG] Carry ERROR:",
             Result
         )
 
@@ -1365,8 +2257,7 @@ local function CarryEgg(Egg)
     if Result == false then
 
         warn(
-            "[AUTO EGG] Server menolak carry:",
-            UID
+            "[AUTO EGG] Server reject carry."
         )
 
         return false
@@ -1380,7 +2271,7 @@ end
 
 
 --==================================================
--- MONSTER PARASITE
+-- FIND MONSTER PARASITE VISUAL
 -- NO UID REQUIRED
 --==================================================
 
@@ -1394,18 +2285,10 @@ local function FindMonsterParasiteVisual()
 
     if not Store then
 
-        warn(
-            "[PARASITE] workspace.ottoko_store tidak ditemukan."
-        )
-
         return nil
 
     end
 
-
-    --================================================
-    -- SCAN SEMUA DESCENDANT
-    --================================================
 
     for _, Object in ipairs(
         Store:GetDescendants()
@@ -1414,12 +2297,9 @@ local function FindMonsterParasiteVisual()
         if Object.Name ==
             "MonsterParasiteVisual" then
 
-            print(
-                "[PARASITE] MonsterParasiteVisual FOUND:"
-            )
 
             print(
-                "[PARASITE]",
+                "[PARASITE] FOUND:",
                 Object:GetFullName()
             )
 
@@ -1437,7 +2317,7 @@ end
 
 
 --==================================================
--- FIND MONSTER MODEL
+-- FIND MONSTER
 --==================================================
 
 local function FindMonsterParasiteMonster()
@@ -1450,18 +2330,10 @@ local function FindMonsterParasiteMonster()
 
     if not MonsterFolder then
 
-        warn(
-            "[PARASITE] workspace.MonsterParasiteMonsters tidak ditemukan."
-        )
-
         return nil
 
     end
 
-
-    --================================================
-    -- ONLY MODEL CHILD
-    --================================================
 
     for _, Object in ipairs(
         MonsterFolder:GetChildren()
@@ -1470,7 +2342,7 @@ local function FindMonsterParasiteMonster()
         if Object:IsA("Model") then
 
             print(
-                "[PARASITE] MONSTER FOUND:",
+                "[PARASITE] MONSTER:",
                 Object:GetFullName()
             )
 
@@ -1482,25 +2354,16 @@ local function FindMonsterParasiteMonster()
     end
 
 
-    warn(
-        "[PARASITE] Tidak ada Model di MonsterParasiteMonsters."
-    )
-
-
     return nil
 
 end
 
 
 --==================================================
--- CHECK + FEED MONSTER PARASITE
+-- CHECK + FEED PARASITE
 --==================================================
 
 local function CheckAndFeedParasite()
-
-    --================================================
-    -- SCAN PARASITE VISUAL
-    --================================================
 
     local ParasiteVisual =
         FindMonsterParasiteVisual()
@@ -1509,8 +2372,9 @@ local function CheckAndFeedParasite()
     if not ParasiteVisual then
 
         print(
-            "[PARASITE] Tidak ada MonsterParasiteVisual."
+            "[PARASITE] Tidak ada parasite."
         )
+
 
         return false
 
@@ -1523,18 +2387,12 @@ local function CheckAndFeedParasite()
 
 
     print(
-        "[PARASITE] MONSTER PARASITE TERDETEKSI!"
+        "[PARASITE] MONSTER PARASITE TERDETEKSI"
     )
 
 
     print(
-        "[PARASITE] VISUAL:",
-        ParasiteVisual:GetFullName()
-    )
-
-
-    print(
-        "[PARASITE] PLACE AKAN DI-SKIP"
+        "[PARASITE] PLACE DI-SKIP"
     )
 
 
@@ -1543,10 +2401,6 @@ local function CheckAndFeedParasite()
     )
 
 
-    --================================================
-    -- FIND MONSTER
-    --================================================
-
     local Monster =
         FindMonsterParasiteMonster()
 
@@ -1554,29 +2408,24 @@ local function CheckAndFeedParasite()
     if not Monster then
 
         warn(
-            "[PARASITE] Monster belum ditemukan."
+            "[PARASITE] Monster tidak ditemukan."
         )
-
-        -- Parasite sudah terdeteksi,
-        -- jadi jangan Place egg.
 
         return true
 
     end
 
 
-    --================================================
-    -- GET MONSTER POSITION
-    --================================================
-
     local MonsterPosition =
-        GetPosition(Monster)
+        GetPosition(
+            Monster
+        )
 
 
     if not MonsterPosition then
 
         warn(
-            "[PARASITE] Posisi monster tidak ditemukan."
+            "[PARASITE] Monster position tidak ditemukan."
         )
 
         return true
@@ -1584,12 +2433,8 @@ local function CheckAndFeedParasite()
     end
 
 
-    --================================================
-    -- FLY TO MONSTER
-    --================================================
-
     print(
-        "[PARASITE] -> FLY TO MONSTER"
+        "[PARASITE] -> FLY MONSTER"
     )
 
 
@@ -1612,10 +2457,6 @@ local function CheckAndFeedParasite()
     end
 
 
-    --================================================
-    -- FEED
-    --================================================
-
     task.wait(0.2)
 
 
@@ -1627,7 +2468,8 @@ local function CheckAndFeedParasite()
     local Success, Result =
         pcall(function()
 
-            return MonsterFeedRemote:InvokeServer()
+            return MonsterFeedRemote:
+                InvokeServer()
 
         end)
 
@@ -1644,148 +2486,24 @@ local function CheckAndFeedParasite()
     )
 
 
-    if not Success then
-
-        warn(
-            "[PARASITE] FEED ERROR:",
-            Result
-        )
-
-    else
-
-        print(
-            "[PARASITE] FEED SELESAI"
-        )
-
-    end
-
-
     return true
 
 end
 
 
 --==================================================
--- FIND OWN PLOT
+-- GET PLOT AREA
 --==================================================
 
-local function GetMyPlot()
+local function GetPlotArea(
+    Plot
+)
 
-    local Plots =
-        Workspace:FindFirstChild(
-            "Plots"
-        )
+    local BiggestPart =
+        nil
 
-
-    if not Plots then
-
-        warn(
-            "[AUTO PLACE] workspace.Plots tidak ditemukan"
-        )
-
-        return nil
-
-    end
-
-
-    for PlotNumber =
-        MIN_PLOT,
-        MAX_PLOT do
-
-
-        local Plot =
-            Plots:FindFirstChild(
-                tostring(PlotNumber)
-            )
-
-
-        if Plot then
-
-            local PlotSign =
-                Plot:FindFirstChild(
-                    "PlotSign"
-                )
-
-
-            if PlotSign then
-
-                local PlayerPlotSign =
-                    PlotSign:FindFirstChild(
-                        "PlayerPlotSign"
-                    )
-
-
-                if PlayerPlotSign then
-
-                    local Frame =
-                        PlayerPlotSign:FindFirstChild(
-                            "Frame"
-                        )
-
-
-                    if Frame then
-
-                        local PlayerName =
-                            Frame:FindFirstChild(
-                                "PlayerName"
-                            )
-
-
-                        if PlayerName then
-
-                            print(
-                                "[AUTO PLACE] Plot",
-                                PlotNumber,
-                                "Owner:",
-                                PlayerName.Text
-                            )
-
-
-                            if PlayerName.Text ==
-                                LocalPlayer.Name then
-
-                                print(
-                                    "[AUTO PLACE] MY PLOT:",
-                                    Plot.Name
-                                )
-
-
-                                return Plot
-
-                            end
-
-                        end
-
-                    end
-
-                end
-
-            end
-
-        end
-
-    end
-
-
-    warn(
-        "[AUTO PLACE] Plot milik sendiri tidak ditemukan"
-    )
-
-
-    return nil
-
-end
-
-
---==================================================
--- FIND PLOT AREA
---==================================================
-
-local function GetPlotArea(Plot)
-
-    local BiggestPart = nil
-
-    local BiggestArea = 0
+    local BiggestArea =
+        0
 
 
     for _, Object in ipairs(
@@ -1811,7 +2529,8 @@ local function GetPlotArea(Plot)
                     Object.Size.Z
 
 
-                if Area > BiggestArea then
+                if Area >
+                    BiggestArea then
 
                     BiggestArea =
                         Area
@@ -1829,29 +2548,13 @@ local function GetPlotArea(Plot)
     end
 
 
-    if BiggestPart then
-
-        print(
-            "[AUTO PLACE] AREA:",
-            BiggestPart:GetFullName()
-        )
-
-
-        print(
-            "[AUTO PLACE] SIZE:",
-            BiggestPart.Size
-        )
-
-    end
-
-
     return BiggestPart
 
 end
 
 
 --==================================================
--- RANDOM POSITION
+-- RANDOM PLOT POSITION
 --==================================================
 
 local function GetRandomPosition(
@@ -1921,277 +2624,326 @@ end
 
 
 --==================================================
--- PET AREA DATA
+-- PLACE EGG ONCE
 --==================================================
 
-local function GetPetAreaData()
-
-    local Success, PlotData = pcall(function()
-        return PlotCmds.GetPlotData()
-    end)
-
-    if not Success or not PlotData then
-        warn("[AUTO PLACE] PlotCmds.GetPlotData gagal")
-        return nil, nil
-    end
-
-    local PetArea = PlotData.PetArea
-    local CenterPoint = PlotData.CenterPoint
-
-    if not PetArea
-        or not CenterPoint
-        or not PetArea:IsA("BasePart")
-        or not CenterPoint:IsA("BasePart") then
-
-        warn("[AUTO PLACE] PetArea / CenterPoint tidak valid")
-        return nil, nil
-    end
-
-    return PetArea, CenterPoint
-end
-
---==================================================
--- RANDOM POSITION SELURUH PETAREA
---==================================================
-
-local function GetRandomPetAreaPosition(PetArea)
-
-    if not PetArea then
-        return nil
-    end
-
-    local HalfSize = PetArea.Size / 2
-    local Padding = 0.5
-
-    local RandomX =
-        math.random() * (HalfSize.X * 2) - HalfSize.X
-
-    local RandomZ =
-        math.random() * (HalfSize.Z * 2) - HalfSize.Z
-
-    if HalfSize.X > Padding * 2 then
-        RandomX = math.clamp(
-            RandomX,
-            -HalfSize.X + Padding,
-            HalfSize.X - Padding
-        )
-    end
-
-    if HalfSize.Z > Padding * 2 then
-        RandomZ = math.clamp(
-            RandomZ,
-            -HalfSize.Z + Padding,
-            HalfSize.Z - Padding
-        )
-    end
-
-    return PetArea.CFrame:PointToWorldSpace(
-        Vector3.new(
-            RandomX,
-            HalfSize.Y,
-            RandomZ
-        )
-    )
-end
-
---==================================================
--- WAIT EGG TOOL GONE
---==================================================
-
-local function WaitUntilEggToolGone(Timeout)
-
-    local StartTime = tick()
-
-    while tick() - StartTime < Timeout do
-
-        local CurrentTool = GetEquippedTool()
-
-        if not CurrentTool then
-            return true
-        end
-
-        task.wait(0.1)
-    end
-
-    return false
-end
-
---==================================================
--- PLACE EGG
--- METODE SAMA DENGAN AUTO EGG YANG SUDAH BERHASIL
---==================================================
-
-local function PlaceEgg(EggTool)
-
-    if not EggTool
-        or not EggTool.Parent then
-        return false
-    end
-
-    local CharacterFolder =
-        Workspace:FindFirstChild(LocalPlayer.Name)
-
-    if not CharacterFolder
-        or EggTool.Parent ~= CharacterFolder then
-
-        warn("[AUTO PLACE] Egg tool bukan di Character")
-        return false
-    end
-
-    local PetArea, CenterPoint =
-        GetPetAreaData()
-
-    if not PetArea or not CenterPoint then
-        return false
-    end
-
-    -- Validasi bahwa tool memang Egg
-    local IsEggSuccess, IsEgg =
-        pcall(function()
-            return EggToolDisplay.IsEggTool(EggTool)
-        end)
-
-    if not IsEggSuccess or not IsEgg then
-        warn(
-            "[AUTO PLACE] Tool bukan Egg:",
-            EggTool.Name
-        )
-        return false
-    end
-
-    -- Ambil UID menggunakan EggToolDisplay,
-    -- bukan hardcode UID.
-    local EggUID =
-        EggToolDisplay.GetToolUid(EggTool)
-
-    if not EggUID then
-        warn(
-            "[AUTO PLACE] Egg UID tidak ditemukan:",
-            EggTool.Name
-        )
-        return false
-    end
-
-    print("==========================================")
-    print("[AUTO PLACE] PLACE EGG START")
-    print("[AUTO PLACE] Tool:", EggTool.Name)
-    print("[AUTO PLACE] UID:", EggUID)
-    print("==========================================")
-
-    -- Retry seperti script PlaceEgg yang berhasil.
-    for Attempt = 1, 50 do
-
-        local CurrentTool = GetEquippedTool()
-
-        if not CurrentTool then
-            print("[AUTO PLACE] Egg sudah tidak ada di Character")
-            return true
-        end
-
-        local WorldPosition =
-            GetRandomPetAreaPosition(PetArea)
-
-        if not WorldPosition then
-            task.wait(0.15)
-            continue
-        end
-
-        -- PENTING:
-        -- posisi world dikonversi menjadi LocalCFrame
-        -- relatif terhadap CenterPoint, sama dengan script
-        -- Auto Egg Place yang sebelumnya berhasil.
-        local LocalCFrame =
-            CenterPoint.CFrame:ToObjectSpace(
-                CFrame.new(WorldPosition)
-            )
-
-        print(
-            "[AUTO PLACE] Attempt:",
-            Attempt,
-            "Position:",
-            WorldPosition
-        )
-
-        local InvokeSuccess, Response1, Response2 =
-            pcall(function()
-                return RequestPlaceEggRemote:InvokeServer({
-                    ["Uid"] = EggUID,
-                    ["LocalCFrame"] = LocalCFrame
-                })
-            end)
-
-        if InvokeSuccess then
-            print(
-                "[AUTO PLACE] Response:",
-                Response1,
-                Response2
-            )
-        else
-            warn(
-                "[AUTO PLACE] Invoke Error:",
-                Response1
-            )
-        end
-
-        -- Jangan langsung menganggap sukses hanya karena
-        -- InvokeServer tidak error. Verifikasi tool hilang.
-        if WaitUntilEggToolGone(3) then
-            print("==========================================")
-            print("[AUTO PLACE] EGG BERHASIL DI-PLACE")
-            print("[AUTO PLACE] Attempt:", Attempt)
-            print("==========================================")
-            return true
-        end
-
-        warn("[AUTO PLACE] Place belum berhasil, retry posisi lain...")
-        task.wait(0.15)
-    end
-
-    warn("[AUTO PLACE] MAX PLACE ATTEMPTS tercapai")
-    return false
-end
-
---==================================================
--- WAIT TOOL GONE
---==================================================
-
-local function WaitToolGone(
+local function PlaceEggOnce(
     Tool,
-    Timeout
+    Plot
 )
 
-    local StartTime =
-        tick()
+    if not Tool
+        or not Tool.Parent then
+
+        return false
+
+    end
 
 
-    while tick() - StartTime <
-        Timeout do
+    local UID =
+        Tool:GetAttribute(
+            "UID"
+        )
 
+
+    if not UID then
+
+        warn(
+            "[PLACE] UID tidak ditemukan:",
+            Tool.Name
+        )
+
+        return false
+
+    end
+
+
+    local AreaPart =
+        GetPlotArea(
+            Plot
+        )
+
+
+    if not AreaPart then
+
+        warn(
+            "[PLACE] Plot area tidak ditemukan."
+        )
+
+        return false
+
+    end
+
+
+    local RandomPosition =
+        GetRandomPosition(
+            Plot,
+            AreaPart
+        )
+
+
+    local LocalCFrame =
+        CFrame.new(
+            RandomPosition.X,
+            FIXED_Y,
+            RandomPosition.Z
+        )
+
+
+    print(
+        "=========================================="
+    )
+
+
+    print(
+        "[PLACE] TRY PLACE"
+    )
+
+
+    print(
+        "[PLACE] Tool:",
+        Tool.Name
+    )
+
+
+    print(
+        "[PLACE] UID:",
+        UID
+    )
+
+
+    print(
+        "[PLACE] Position:",
+        RandomPosition
+    )
+
+
+    print(
+        "=========================================="
+    )
+
+
+    local Args = {
+
+        [1] = {
+
+            ["Uid"] =
+                UID,
+
+            ["LocalCFrame"] =
+                LocalCFrame
+
+        }
+
+    }
+
+
+    local Success, Result =
+        pcall(function()
+
+            return PlaceEggRemote:
+                InvokeServer(
+                    unpack(Args)
+                )
+
+        end)
+
+
+    print(
+        "[PLACE] Success:",
+        Success
+    )
+
+
+    print(
+        "[PLACE] Result:",
+        Result
+    )
+
+
+    if not Success then
+
+        warn(
+            "[PLACE] ERROR:",
+            Result
+        )
+
+        return false
+
+    end
+
+
+    return true
+
+end
+
+
+--==================================================
+-- PLACE UNTIL SUCCESS
+--==================================================
+
+local function PlaceEggUntilSuccess(
+    Tool,
+    Plot
+)
+
+    if not Tool then
+
+        return false
+
+    end
+
+
+    local Attempt =
+        0
+
+
+    print(
+        "=========================================="
+    )
+
+
+    print(
+        "[PLACE] START RETRY LOOP"
+    )
+
+
+    print(
+        "[PLACE] EGG:",
+        Tool.Name
+    )
+
+
+    print(
+        "=========================================="
+    )
+
+
+    while true do
+
+        Attempt =
+            Attempt + 1
+
+
+        --============================================
+        -- TOOL CHECK
+        --============================================
 
         if not Tool.Parent then
 
+            print(
+                "[PLACE] TOOL HILANG"
+            )
+
+
+            print(
+                "[PLACE] PLACE SUCCESS"
+            )
+
+
             return true
 
         end
 
 
-        local CurrentTool =
+        --============================================
+        -- EQUIP
+        --============================================
+
+        local Equipped =
             GetEquippedTool()
 
 
-        if CurrentTool ~= Tool then
+        if Equipped ~= Tool then
 
-            return true
+            local Character =
+                LocalPlayer.Character
+
+
+            local Humanoid =
+                Character
+                and Character:FindFirstChildOfClass(
+                    "Humanoid"
+                )
+
+
+            if Humanoid then
+
+                pcall(function()
+
+                    Humanoid:EquipTool(
+                        Tool
+                    )
+
+                end)
+
+            end
+
+
+            task.wait(0.2)
 
         end
 
 
-        task.wait(0.1)
+        print(
+            "[PLACE] ATTEMPT:",
+            Attempt
+        )
+
+
+        --============================================
+        -- PLACE
+        --============================================
+
+        PlaceEggOnce(
+            Tool,
+            Plot
+        )
+
+
+        --============================================
+        -- WAIT TOOL GONE
+        --============================================
+
+        local StartTime =
+            tick()
+
+
+        while tick() - StartTime <
+            WAIT_TOOL_GONE do
+
+
+            if not Tool.Parent then
+
+                print(
+                    "[PLACE] SUCCESS!"
+                )
+
+
+                return true
+
+            end
+
+
+            task.wait(
+                0.1
+            )
+
+        end
+
+
+        warn(
+            "[PLACE] ATTEMPT",
+            Attempt,
+            "FAILED"
+        )
+
+
+        task.wait(
+            PLACE_RETRY_DELAY
+        )
 
     end
-
-
-    return false
 
 end
 
@@ -2208,7 +2960,8 @@ local UserId =
 
 local function GetActiveRenders()
 
-    local Renders = {}
+    local Renders =
+        {}
 
 
     for _, Object in ipairs(
@@ -2218,6 +2971,7 @@ local function GetActiveRenders()
         if Object.Name ==
             "PlacedEggRenders"
             and #Object:GetChildren() > 0 then
+
 
             table.insert(
                 Renders,
@@ -2235,7 +2989,7 @@ end
 
 
 --==================================================
--- CHECK OWN EGG
+-- IS MY EGG
 --==================================================
 
 local function IsMyEgg(Egg)
@@ -2324,11 +3078,9 @@ local function FindMyPlacedEgg()
         GetActiveRenders()
     ) do
 
-
         for _, Egg in ipairs(
             Render:GetChildren()
         ) do
-
 
             if IsMyEgg(Egg) then
 
@@ -2350,7 +3102,9 @@ end
 -- FLY TO PLACED EGG
 --==================================================
 
-local function FlyToPlacedEgg(Egg)
+local function FlyToPlacedEgg(
+    Egg
+)
 
     if not Egg then
 
@@ -2360,7 +3114,9 @@ local function FlyToPlacedEgg(Egg)
 
 
     local Position =
-        GetPlacedEggPosition(Egg)
+        GetPlacedEggPosition(
+            Egg
+        )
 
 
     if not Position then
@@ -2370,14 +3126,10 @@ local function FlyToPlacedEgg(Egg)
     end
 
 
-    local LockName =
-        "HATCH:" .. Egg.Name
-
-
     return AutoFlyToPosition(
         Position,
         WALK_TO_EGG_DISTANCE,
-        LockName
+        "HATCH:" .. Egg.Name
     )
 
 end
@@ -2387,7 +3139,8 @@ end
 -- PROXIMITY PROMPT
 --==================================================
 
-local TriggeredPrompts = {}
+local TriggeredPrompts =
+    {}
 
 
 local function TriggerNearbyPrompts()
@@ -2406,7 +3159,6 @@ local function TriggerNearbyPrompts()
     for _, Prompt in ipairs(
         Workspace:GetDescendants()
     ) do
-
 
         if Prompt:IsA("ProximityPrompt")
             and Prompt.Enabled then
@@ -2435,19 +3187,14 @@ local function TriggerNearbyPrompts()
                         Prompt
                     ] then
 
-
                         TriggeredPrompts[
                             Prompt
                         ] = true
 
 
                         print(
-                            "[AUTO HATCH] TRIGGER PROMPT:",
-                            Prompt:GetFullName(),
-                            "| Distance:",
-                            math.floor(
-                                Distance * 10
-                            ) / 10
+                            "[AUTO HATCH] TRIGGER:",
+                            Prompt:GetFullName()
                         )
 
 
@@ -2492,7 +3239,7 @@ local function HatchEggProcess()
     if not Egg then
 
         print(
-            "[AUTO HATCH] Tidak ada egg milik kita."
+            "[AUTO HATCH] Own egg tidak ditemukan."
         )
 
         return
@@ -2506,15 +3253,8 @@ local function HatchEggProcess()
 
 
     print(
-        "[AUTO HATCH] OWN EGG FOUND:",
+        "[AUTO HATCH] EGG:",
         Egg.Name
-    )
-
-
-    print(
-        "[AUTO HATCH] MAX HATCH TIME:",
-        HATCH_MAX_TIME,
-        "SEC"
     )
 
 
@@ -2522,10 +3262,6 @@ local function HatchEggProcess()
         "=========================================="
     )
 
-
-    --================================================
-    -- FLY TO EGG
-    --================================================
 
     local Reached =
         FlyToPlacedEgg(
@@ -2544,11 +3280,8 @@ local function HatchEggProcess()
     end
 
 
-    --================================================
-    -- HATCH LOOP
-    --================================================
-
-    TriggeredPrompts = {}
+    TriggeredPrompts =
+        {}
 
 
     local StartTime =
@@ -2563,7 +3296,7 @@ local function HatchEggProcess()
             or not Egg.Parent then
 
             print(
-                "[AUTO HATCH] Egg sudah hilang / berhasil hatch."
+                "[AUTO HATCH] EGG HILANG / HATCHED"
             )
 
             return
@@ -2582,9 +3315,7 @@ local function HatchEggProcess()
 
 
     print(
-        "[AUTO HATCH] Hatch timeout:",
-        HATCH_MAX_TIME,
-        "detik."
+        "[AUTO HATCH] TIMEOUT"
     )
 
 end
@@ -2598,20 +3329,16 @@ local function StartHatch()
 
     if HatchRunning then
 
-        print(
-            "[AUTO HATCH] Hatch masih berjalan."
-        )
-
         return
 
     end
 
 
-    HatchRunning = true
+    HatchRunning =
+        true
 
 
     task.spawn(function()
-
 
         local Success, Error =
             xpcall(
@@ -2627,12 +3354,14 @@ local function StartHatch()
                 Error
             )
 
+
             StopFly()
 
         end
 
 
-        HatchRunning = false
+        HatchRunning =
+            false
 
     end)
 
@@ -2640,1254 +3369,902 @@ end
 
 
 --==================================================
--- GET PUBLIC SERVERS
+-- FUSE PROCESS
 --==================================================
 
-local function GetServers()
-
-    local Servers = {}
-
-    local Cursor = ""
-
-
-    repeat
-
-
-        local Url =
-            "https://games.roblox.com/v1/games/"
-            .. game.PlaceId
-            .. "/servers/Public?sortOrder=Asc&limit=100"
-
-
-        if Cursor ~= "" then
-
-            Url =
-                Url
-                .. "&cursor="
-                .. HttpService:UrlEncode(
-                    Cursor
-                )
-
-        end
-
-
-        local Success, Result =
-            pcall(function()
-
-                return game:HttpGet(
-                    Url
-                )
-
-            end)
-
-
-        if not Success then
-
-            warn(
-                "[AUTO EGG] Server list error:",
-                Result
-            )
-
-            return Servers
-
-        end
-
-
-        local DecodeSuccess, Data =
-            pcall(function()
-
-                return HttpService:JSONDecode(
-                    Result
-                )
-
-            end)
-
-
-        if not DecodeSuccess then
-
-            warn(
-                "[AUTO EGG] Server decode error"
-            )
-
-            return Servers
-
-        end
-
-
-        for _, Server in ipairs(
-            Data.data or {}
-        ) do
-
-
-            if Server.id ~= game.JobId
-                and Server.playing < Server.maxPlayers then
-
-
-                table.insert(
-                    Servers,
-                    Server
-                )
-
-            end
-
-        end
-
-
-        Cursor =
-            Data.nextPageCursor
-            or ""
-
-
-    until Cursor == ""
-        or #Servers > 0
-
-
-    return Servers
-
-end
-
-
---==================================================
--- FIND 3 SAME PETS
---==================================================
-
-local function FindThreeSamePets()
-
-    local Backpack =
-        LocalPlayer:WaitForChild(
-            "Backpack"
-        )
-
-    local Groups = {}
-
-    for _, Tool in ipairs(
-        Backpack:GetChildren()
-    ) do
-
-        if Tool:IsA("Tool")
-            and not BLACKLIST[Tool.Name] then
-
-            local Weight =
-                Tool:GetAttribute("Weight")
-
-            local UID =
-                Tool:GetAttribute("UID")
-
-            if typeof(Weight) == "number"
-                and Weight < MAX_PET_WEIGHT
-                and typeof(UID) == "string"
-                and UID ~= "" then
-
-                if not Groups[Tool.Name] then
-                    Groups[Tool.Name] = {}
-                end
-
-                table.insert(
-                    Groups[Tool.Name],
-                    Tool
-                )
-            end
-        end
-    end
-
-    for Name, Tools in pairs(Groups) do
-
-        if #Tools >= 3 then
-
-            print("==========================================")
-            print("[FUSE] FOUND 3 SAME PET")
-            print("[FUSE] NAME:", Name)
-            print("==========================================")
-
-            for i = 1, 3 do
-                print(
-                    "[FUSE] PET #" .. i,
-                    "| Name:", Tools[i].Name,
-                    "| Weight:", Tools[i]:GetAttribute("Weight"),
-                    "| UID:", Tools[i]:GetAttribute("UID")
-                )
-            end
-
-            return Tools[1], Tools[2], Tools[3]
-        end
-    end
-
-    return nil
-end
-
-
---==================================================
--- LOAD PETS
---==================================================
-
-local function LoadFusePets(Pets)
-
-    for i, Tool in ipairs(Pets) do
-
-        if not Tool or not Tool.Parent then
-            warn("[FUSE] Pet #" .. i .. " sudah tidak tersedia")
-            return false
-        end
-
-        local UID = Tool:GetAttribute("UID")
-
-        if typeof(UID) ~= "string" or UID == "" then
-            warn("[FUSE] UID invalid pada pet #" .. i)
-            return false
-        end
-
-        print("------------------------------------------")
-        print("[FUSE] LOAD PET #" .. i)
-        print("Name:", Tool.Name)
-        print("Weight:", Tool:GetAttribute("Weight"))
-        print("UID:", UID)
-        print("------------------------------------------")
-
-        local Success, Result =
-            pcall(function()
-                return LoadPet:InvokeServer(UID)
-            end)
-
-        print("[FUSE] LoadPet:", Success, Result)
-
-        if not Success then
-            warn("[FUSE] LoadPet gagal #" .. i, Result)
-            return false
-        end
-
-        task.wait(FUSE_LOAD_DELAY)
-    end
-
-    return true
-end
-
-
---==================================================
--- BEGIN FUSE
---==================================================
-
-local function BeginFusion()
-
-    print("[FUSE] BEGIN FUSE")
-
-    local Success, Result =
-        pcall(function()
-            return BeginFuse:InvokeServer()
-        end)
-
-    print("[FUSE] BeginFuse:", Success, Result)
-
-    if not Success then
-        warn("[FUSE] BeginFuse ERROR:", Result)
-        return false
-    end
-
-    return true
-end
-
-
---==================================================
--- FINISH REVEAL
---==================================================
-
-local function FinishFusion()
+local function ProcessFuse(
+    Pet1,
+    Pet2,
+    Pet3
+)
 
     print(
-        "[FUSE] WAITING",
-        FUSE_AFTER_BEGIN_DELAY,
-        "SEC FOR FUSE PROCESS"
+        "=========================================="
     )
 
-    task.wait(FUSE_AFTER_BEGIN_DELAY)
-
-    print("[FUSE] FINISH REVEAL")
-
-    local Success, Result =
-        pcall(function()
-            return FinishReveal:InvokeServer()
-        end)
-
-    print("[FUSE] FinishReveal:", Success, Result)
-
-    if not Success then
-        warn("[FUSE] FinishReveal ERROR:", Result)
-        return false
-    end
-
-    return true
-end
-
-
---==================================================
--- GET MY TREADMILL
---==================================================
-
-local function GetMyTreadmill()
-
-    local Plot = GetMyPlot()
-
-    if not Plot then
-        warn("[TREADMILL] Plot milik sendiri tidak ditemukan.")
-        return nil
-    end
-
-    local Treadmill =
-        Plot:FindFirstChild(
-            TREADMILL_NAME,
-            true
-        )
-
-    if not Treadmill then
-        warn(
-            "[TREADMILL] TreadmillBottom tidak ditemukan di plot:",
-            Plot.Name
-        )
-        return nil
-    end
 
     print(
-        "[TREADMILL] MY TREADMILL:",
-        Treadmill:GetFullName()
+        "[MAIN] FUSE PRIORITY"
     )
 
-    return Treadmill
-end
+
+    print(
+        "[MAIN] 3 PET AVAILABLE"
+    )
 
 
---==================================================
--- ENTER TREADMILL
---==================================================
+    print(
+        "=========================================="
+    )
 
-local function EnterTreadmill()
+
+    --================================================
+    -- EXIT TREADMILL
+    --================================================
 
     if TreadmillRunning then
-        return true
-    end
 
-    local Treadmill = GetMyTreadmill()
-
-    if not Treadmill then
-        return false
-    end
-
-    print("==========================================")
-    print("[TREADMILL] NO EGG + NO 3 PET")
-    print("[TREADMILL] -> FLY TO:", Treadmill:GetFullName())
-
-    local Reached =
-        FlyToObject(
-            Treadmill,
-            TREADMILL_FLY_DISTANCE
+        print(
+            "[FUSE] EXIT TREADMILL"
         )
 
-    if not Reached then
-        warn("[TREADMILL] Gagal mencapai treadmill.")
-        return false
+
+        local Doffed =
+            ExitTreadmill()
+
+
+        if not Doffed then
+
+            return false
+
+        end
+
     end
 
-    task.wait(0.2)
 
-    print("[TREADMILL] -> ASK WEAR STILL")
+    --================================================
+    -- LOAD #1
+    --================================================
 
-    local Success, Result =
-        pcall(function()
-            return TreadmillWearRemote:InvokeServer()
-        end)
-
-    print("[TREADMILL] WEAR SUCCESS:", Success)
-    print("[TREADMILL] WEAR RESULT:", Result)
-
-    if not Success then
-        warn("[TREADMILL] Wear error:", Result)
-        return false
-    end
-
-    TreadmillRunning = true
-
-    print("[TREADMILL] BERHASIL MASUK TREADMILL")
-    print("==========================================")
-
-    return true
-end
-
-
---==================================================
--- EXIT TREADMILL
---==================================================
-
-local function ExitTreadmill()
-
-    if not TreadmillRunning then
-        return true
-    end
-
-    print("==========================================")
-    print("[TREADMILL] TARGET TERSEDIA")
-    print("[TREADMILL] -> ASK DOFF")
-
-    local Success, Result =
-        pcall(function()
-            return TreadmillDoffRemote:InvokeServer()
-        end)
-
-    print("[TREADMILL] DOFF SUCCESS:", Success)
-    print("[TREADMILL] DOFF RESULT:", Result)
-
-    if not Success then
-        warn("[TREADMILL] Doff error:", Result)
-        return false
-    end
-
-    TreadmillRunning = false
-
-    task.wait(0.2)
-
-    print("[TREADMILL] BERHASIL KELUAR TREADMILL")
-    print("==========================================")
-
-    return true
-end
-
-
---==================================================
--- FUSE + PLACE FUSED EGG
---==================================================
-
-local function ProcessOneFuse()
-
-    local Pet1, Pet2, Pet3 =
-        FindThreeSamePets()
-
-    if not Pet1 then
-        return false
-    end
-
-    local Pets = {
+    if not LoadOnePet(
         Pet1,
+        1
+    ) then
+
+        return false
+
+    end
+
+
+    --================================================
+    -- LOAD #2
+    --================================================
+
+    if not LoadOnePet(
         Pet2,
-        Pet3
-    }
+        2
+    ) then
 
-    local Loaded =
-        LoadFusePets(Pets)
-
-    if not Loaded then
         return false
+
     end
 
-    if not BeginFusion() then
+
+    --================================================
+    -- LOAD #3
+    --================================================
+
+    if not LoadOnePet(
+        Pet3,
+        3
+    ) then
+
         return false
+
     end
 
-    if not FinishFusion() then
+
+    --================================================
+    -- BEGIN FUSE
+    --================================================
+
+    if not StartFuse() then
+
         return false
+
     end
 
-    task.wait(0.5)
 
-    print("[FUSE] WAITING FOR FUSED EGG TOOL...")
-
-    local Tool =
-        WaitForEquippedTool(
-            FUSED_EGG_WAIT_TIMEOUT
-        )
-
-    if not Tool then
-        warn("[FUSE] Fused egg/tool tidak muncul.")
-        return false
-    end
+    --================================================
+    -- WAIT FUSE PROCESS
+    --================================================
 
     print(
-        "[FUSE] FUSED TOOL:",
-        Tool.Name,
-        "| UID:",
-        Tool:GetAttribute("UID")
+        "[FUSE] WAIT PROCESS..."
     )
 
-    local Plot = GetMyPlot()
+
+    task.wait(
+        FUSE_PROCESS_DELAY
+    )
+
+
+    --================================================
+    -- FINISH REVEAL
+    --================================================
+
+    if not FinishFuse() then
+
+        return false
+
+    end
+
+
+    --================================================
+    -- WAIT RESULT
+    --================================================
+
+    print(
+        "[FUSE] WAIT FUSED EGG..."
+    )
+
+
+    local EggTool =
+        WaitForFusedEgg(
+            FUSED_EGG_TIMEOUT
+        )
+
+
+    if not EggTool then
+
+        warn(
+            "[FUSE] Fused egg tidak ditemukan."
+        )
+
+        return false
+
+    end
+
+
+    --================================================
+    -- OWN PLOT
+    --================================================
+
+    local Plot =
+        GetMyPlot()
+
 
     if not Plot then
+
         return false
+
     end
 
-    print("[FUSE] -> FLY OWN PLOT")
+
+    --================================================
+    -- PLACE FUSED EGG
+    --================================================
+
+    local Placed =
+        PlaceEggUntilSuccess(
+            EggTool,
+            Plot
+        )
+
+
+    if not Placed then
+
+        return false
+
+    end
+
+
+    print(
+        "=========================================="
+    )
+
+
+    print(
+        "[FUSE] FUSE + PLACE SELESAI"
+    )
+
+
+    print(
+        "[FUSE] KEMBALI CEK FUSE"
+    )
+
+
+    print(
+        "=========================================="
+    )
+
+
+    return true
+
+end
+
+
+--==================================================
+-- NORMAL EGG PROCESS
+--==================================================
+
+local function ProcessNormalEgg(
+    Egg
+)
+
+    print(
+        "=========================================="
+    )
+
+
+    print(
+        "[EGG] NORMAL EGG PROCESS"
+    )
+
+
+    print(
+        "[EGG] Egg:",
+        Egg.Name
+    )
+
+
+    print(
+        "=========================================="
+    )
+
+
+    --================================================
+    -- EXIT TREADMILL
+    --================================================
+
+    if TreadmillRunning then
+
+        print(
+            "[EGG] EXIT TREADMILL"
+        )
+
+
+        local Doffed =
+            ExitTreadmill()
+
+
+        if not Doffed then
+
+            return false
+
+        end
+
+    end
+
+
+    --================================================
+    -- START AREA
+    --================================================
+
+    local StartArea =
+        GetStartArea()
+
+
+    if not StartArea then
+
+        warn(
+            "[EGG] StartArea tidak ditemukan."
+        )
+
+        return false
+
+    end
+
+
+    --================================================
+    -- FLY START
+    --================================================
+
+    local StartPosition =
+        GetPosition(
+            StartArea
+        )
+
+
+    if not StartPosition then
+
+        return false
+
+    end
+
+
+    StartPosition =
+        StartPosition +
+        Vector3.new(
+            -20,
+            5,
+            0
+        )
+
+
+    print(
+        "[EGG] -> FLY START AREA"
+    )
+
+
+    local StartReached =
+        AutoFlyToPosition(
+            StartPosition,
+            REACH_DISTANCE,
+            "MAIN:StartArea"
+        )
+
+
+    if not StartReached then
+
+        return false
+
+    end
+
+
+    --================================================
+    -- VALIDATE EGG
+    --================================================
+
+    if not Egg
+        or not Egg.Parent then
+
+        print(
+            "[EGG] Egg sudah hilang."
+        )
+
+        return false
+
+    end
+
+
+    local IsHighlight =
+        HasHighlight(
+            Egg
+        )
+
+
+    if not IsHighlight then
+
+        local Scale =
+            GetEggScale(
+                Egg
+            )
+
+
+        local PivotX =
+            GetEggWorldPivotX(
+                Egg
+            )
+
+
+        if Scale <=
+            NORMAL_MIN_SCALE
+            or PivotX <=
+            NORMAL_MIN_WORLD_PIVOT_X then
+
+            print(
+                "[EGG] Egg tidak valid lagi."
+            )
+
+            return false
+
+        end
+
+    end
+
+
+    --================================================
+    -- FLY EGG
+    --================================================
+
+    print(
+        "[EGG] -> FLY EGG"
+    )
+
+
+    local ReachedEgg =
+        FlyToObject(
+            Egg
+        )
+
+
+    if not ReachedEgg then
+
+        return false
+
+    end
+
+
+    --================================================
+    -- CARRY
+    --================================================
+
+    task.wait(
+        AFTER_CARRY_START_DELAY
+    )
+
+
+    local Carried =
+        CarryEgg(
+            Egg
+        )
+
+
+    if not Carried then
+
+        warn(
+            "[EGG] Carry gagal."
+        )
+
+        return false
+
+    end
+
+
+    task.wait(
+        CARRY_DELAY
+    )
+
+
+    --================================================
+    -- RETURN START
+    --================================================
+
+    StartPosition =
+        GetPosition(
+            StartArea
+        )
+
+
+    if not StartPosition then
+
+        return false
+
+    end
+
+
+    StartPosition =
+        StartPosition +
+        Vector3.new(
+            -20,
+            5,
+            0
+        )
+
+
+    print(
+        "[EGG] -> RETURN START"
+    )
+
+
+    StartReached =
+        AutoFlyToPosition(
+            StartPosition,
+            REACH_DISTANCE,
+            "MAIN:StartArea"
+        )
+
+
+    if not StartReached then
+
+        return false
+
+    end
+
+
+    --================================================
+    -- WAIT
+    --================================================
+
+    print(
+        "[EGG] WAIT:",
+        WAIT_AFTER_RETURN
+    )
+
+
+    task.wait(
+        WAIT_AFTER_RETURN
+    )
+
+
+    --================================================
+    -- CHECK TOOL
+    --================================================
+
+    local Tool =
+        GetEquippedTool()
+
+
+    if not Tool then
+
+        Tool =
+            WaitForEquippedTool(
+                5
+            )
+
+    end
+
+
+    if not Tool then
+
+        warn(
+            "[EGG] Tool tidak muncul."
+        )
+
+        return false
+
+    end
+
+
+    print(
+        "[EGG] TOOL:",
+        Tool.Name
+    )
+
+
+    print(
+        "[EGG] TOOL UID:",
+        Tool:GetAttribute(
+            "UID"
+        )
+    )
+
+
+    --================================================
+    -- PARASITE CHECK #1
+    --================================================
+
+    print(
+        "[EGG] CHECK PARASITE"
+    )
+
+
+    local ParasiteHandled =
+        CheckAndFeedParasite()
+
+
+    if ParasiteHandled then
+
+        print(
+            "=========================================="
+        )
+
+
+        print(
+            "[EGG] PARASITE HANDLED"
+        )
+
+
+        print(
+            "[EGG] PLACE SKIPPED"
+        )
+
+
+        print(
+            "=========================================="
+        )
+
+
+        return true
+
+    end
+
+
+    --================================================
+    -- OWN PLOT
+    --================================================
+
+    local Plot =
+        GetMyPlot()
+
+
+    if not Plot then
+
+        return false
+
+    end
+
+
+    --================================================
+    -- FLY OWN PLOT
+    --================================================
+
+    print(
+        "[EGG] -> FLY OWN PLOT"
+    )
+
 
     local ReachedPlot =
-        FlyToObject(Plot)
+        FlyToObject(
+            Plot
+        )
+
 
     if not ReachedPlot then
+
         return false
+
     end
+
+
+    --================================================
+    -- CHECK TOOL AGAIN
+    --================================================
 
     local CurrentTool =
         GetEquippedTool()
 
+
     if not CurrentTool then
-        warn("[FUSE] Fused egg sudah tidak equipped.")
+
+        warn(
+            "[EGG] Tool tidak lagi equipped."
+        )
+
         return false
+
     end
+
+
+    --================================================
+    -- PARASITE SAFETY RECHECK
+    --================================================
+
+    print(
+        "[EGG] PARASITE SAFETY RECHECK"
+    )
+
+
+    local ParasiteAfterPlot =
+        CheckAndFeedParasite()
+
+
+    if ParasiteAfterPlot then
+
+        print(
+            "[EGG] PARASITE DETECTED"
+        )
+
+
+        print(
+            "[EGG] PLACE CANCELLED"
+        )
+
+
+        return true
+
+    end
+
+
+    --================================================
+    -- PLACE
+    --================================================
+
+    print(
+        "[EGG] -> PLACE"
+    )
+
 
     local Placed =
-        PlaceEgg(
-            CurrentTool
+        PlaceEggUntilSuccess(
+            CurrentTool,
+            Plot
         )
+
 
     if not Placed then
-        warn("[FUSE] Place fused egg gagal.")
+
         return false
+
     end
 
-    print("[FUSE] FUSED EGG PLACE REQUEST SENT")
 
-    WaitToolGone(
-        CurrentTool,
-        WAIT_TOOL_GONE
+    --================================================
+    -- HATCH
+    --================================================
+
+    print(
+        "[EGG] PLACE SUCCESS"
     )
 
-    task.wait(FUSE_AFTER_REVEAL_DELAY)
 
-    print("==========================================")
-    print("[FUSE] FUSE + PLACE SELESAI")
-    print("==========================================")
+    print(
+        "[EGG] -> START HATCH"
+    )
+
+
+    StartHatch()
+
+
+    --================================================
+    -- WAIT HATCH
+    --================================================
+
+    print(
+        "[EGG] WAIT:",
+        HATCH_RESUME_TIME,
+        "SEC"
+    )
+
+
+    task.wait(
+        HATCH_RESUME_TIME
+    )
+
+
+    print(
+        "[EGG] NORMAL EGG PROCESS COMPLETE"
+    )
+
 
     return true
-end
-
-
---==================================================
--- SERVER HOP
---==================================================
-
-local function ServerHop()
-
-    print(
-        "=========================================="
-    )
-
-
-    print(
-        "[AUTO EGG] NO VALID EGG"
-    )
-
-
-    print(
-        "[AUTO EGG] SERVER HOP..."
-    )
-
-
-    print(
-        "=========================================="
-    )
-
-
-    StopFly()
-
-
-    local Servers =
-        GetServers()
-
-
-    if #Servers == 0 then
-
-        warn(
-            "[AUTO EGG] Tidak ada server ditemukan."
-        )
-
-        task.wait(3)
-
-        return
-
-    end
-
-
-    local Server =
-        Servers[
-            math.random(
-                1,
-                #Servers
-            )
-        ]
-
-
-    print(
-        "[AUTO EGG] Teleport:",
-        Server.id,
-        "| Players:",
-        Server.playing,
-        "/",
-        Server.maxPlayers
-    )
-
-
-    local Success, Error =
-        pcall(function()
-
-            TeleportService:TeleportToPlaceInstance(
-                game.PlaceId,
-                Server.id,
-                LocalPlayer
-            )
-
-        end)
-
-
-    if not Success then
-
-        warn(
-            "[AUTO EGG] Teleport error:",
-            Error
-        )
-
-        task.wait(3)
-
-    end
 
 end
 
 
 --==================================================
--- MAIN PROCESS
+-- MAIN DECISION
+--
+-- PRIORITY:
+--
+-- 1. FUSE
+-- 2. EGG
+-- 3. TREADMILL
 --==================================================
 
 local function Process()
 
-    --================================================
-    -- PROCESS LOCK
-    --================================================
-
     if ProcessRunning then
-
-        warn(
-            "[AUTO EGG] Process masih berjalan -> SKIP"
-        )
 
         return
 
     end
 
 
-    ProcessRunning = true
+    ProcessRunning =
+        true
 
 
     local Success, Error =
-        xpcall(function()
+        xpcall(
+            function()
 
 
-            --========================================
-            -- STEP 1
-            -- FIND EGG
-            --========================================
+                --====================================
+                -- PRIORITY #1
+                -- CHECK FUSE
+                --====================================
 
-            local Egg =
-                GetBestEgg()
-
-
-            --========================================
-            -- NO EGG
-            -- CHECK 3 SAME PET FIRST
-            --========================================
-
-            if not Egg then
-
-                print("[AUTO EGG] TIDAK ADA VALID EGG")
-                print("[AUTO EGG] CHECK 3 SAME PET UNTUK FUSE")
-
-                local Pet1, Pet2, Pet3 =
+                local Pet1,
+                    Pet2,
+                    Pet3 =
                     FindThreeSamePets()
 
-                if Pet1 and Pet2 and Pet3 then
 
-                    print("[AUTO EGG] ADA 3 PET -> FUSE")
-
-                    if TreadmillRunning then
-
-                        local Doffed = ExitTreadmill()
-
-                        if not Doffed then
-                            return
-                        end
-
-                    end
-
-                    ProcessOneFuse()
-
-                else
-
-                    print("[AUTO EGG] TIDAK ADA 3 PET UNTUK FUSE")
-                    print("[AUTO EGG] -> TREADMILL")
-
-                    EnterTreadmill()
-
-                end
-
-                return
-
-            end
-
-
-            --========================================
-            -- EGG FOUND
-            -- EXIT TREADMILL FIRST
-            --========================================
-
-            if TreadmillRunning then
-
-                print("[AUTO EGG] EGG FOUND -> EXIT TREADMILL")
-
-                local Doffed =
-                    ExitTreadmill()
-
-                if not Doffed then
-                    return
-                end
-
-            end
-
-
-            --========================================
-            -- STEP 2
-            -- START AREA
-            --========================================
-
-            local StartArea =
-                GetStartArea()
-
-
-            if not StartArea then
-
-                warn(
-                    "[AUTO EGG] StartArea tidak ditemukan."
-                )
-
-                task.wait(2)
-
-                return
-
-            end
-
-
-            --========================================
-            -- STEP 3
-            -- FLY START
-            --========================================
-
-            print(
-                "[AUTO EGG] -> FLY START AREA"
-            )
-
-
-            local StartPosition =
-                GetPosition(StartArea)
-
-
-            if StartPosition then
-
-                StartPosition =
-                    StartPosition +
-                    Vector3.new(
-                        -20,
-                        5,
-                        0
-                    )
-
-            end
-
-
-            local StartReached =
-                AutoFlyToPosition(
-                    StartPosition,
-                    REACH_DISTANCE,
-                    "MAIN:StartArea"
-                )
-
-
-            if not StartReached then
-
-                return
-
-            end
-
-
-            --========================================
-            -- STEP 4
-            -- VALIDATE EGG
-            --========================================
-
-            if not Egg
-                or not Egg.Parent then
-
-                print(
-                    "[AUTO EGG] Egg sudah hilang."
-                )
-
-                return
-
-            end
-
-
-            local IsHighlight =
-                HasHighlight(Egg)
-
-
-            if not IsHighlight then
-
-                local Scale =
-                    GetEggScale(Egg)
-
-
-                local PivotX =
-                    GetEggWorldPivotX(Egg)
-
-
-                if Scale <=
-                    NormalEggConfig.MIN_SCALE
-                    or PivotX <=
-                    NormalEggConfig.MIN_WORLD_PIVOT_X then
+                if Pet1 then
 
                     print(
-                        "[AUTO EGG] Egg tidak valid lagi."
+                        "=========================================="
                     )
+
+
+                    print(
+                        "[MAIN] PRIORITY: FUSE"
+                    )
+
+
+                    print(
+                        "=========================================="
+                    )
+
+
+                    ProcessFuse(
+                        Pet1,
+                        Pet2,
+                        Pet3
+                    )
+
 
                     return
 
                 end
 
-            end
 
+                --====================================
+                -- NO FUSEABLE PET
+                --====================================
 
-            --========================================
-            -- STEP 5
-            -- FLY EGG
-            --========================================
-
-            print(
-                "[AUTO EGG] -> FLY EGG:",
-                Egg.Name
-            )
-
-
-            local ReachedEgg =
-                FlyToObject(
-                    Egg
+                print(
+                    "[MAIN] NO 3 PET FUSEABLE"
                 )
 
 
-            if not ReachedEgg then
+                --====================================
+                -- PRIORITY #2
+                -- FIND EGG
+                --====================================
 
-                return
-
-            end
-
-
-            --========================================
-            -- STEP 6
-            -- CARRY
-            --========================================
-
-            task.wait(
-                AFTER_CARRY_START_DELAY
-            )
+                local Egg =
+                    GetBestEgg()
 
 
-            local Carried =
-                CarryEgg(Egg)
+                if Egg then
 
-
-            if not Carried then
-
-                warn(
-                    "[AUTO EGG] Carry gagal."
-                )
-
-                return
-
-            end
-
-
-            task.wait(
-                CARRY_DELAY
-            )
-
-
-            --========================================
-            -- STEP 7
-            -- RETURN START
-            --========================================
-
-            print(
-                "[AUTO EGG] -> FLY START AREA"
-            )
-
-
-            StartPosition =
-                GetPosition(StartArea)
-
-
-            if StartPosition then
-
-                StartPosition =
-                    StartPosition +
-                    Vector3.new(
-                        -20,
-                        5,
-                        0
+                    print(
+                        "=========================================="
                     )
 
-            end
 
-
-            StartReached =
-                AutoFlyToPosition(
-                    StartPosition,
-                    REACH_DISTANCE,
-                    "MAIN:StartArea"
-                )
-
-
-            if not StartReached then
-
-                return
-
-            end
-
-
-            --========================================
-            -- STEP 8
-            -- WAIT
-            --========================================
-
-            print(
-                "[AUTO EGG] Sampai StartArea."
-            )
-
-
-            print(
-                "[AUTO EGG] Menunggu",
-                WAIT_AFTER_RETURN,
-                "detik..."
-            )
-
-
-            task.wait(
-                WAIT_AFTER_RETURN
-            )
-
-
-            --========================================
-            -- STEP 9
-            -- CHECK TOOL
-            --========================================
-
-            print(
-                "[AUTO EGG] STEP 9 -> CHECK TOOL"
-            )
-
-
-            local Tool =
-                GetEquippedTool()
-
-
-            if not Tool then
-
-                print(
-                    "[AUTO EGG] Tool BELUM EQUIPPED."
-                )
-
-
-                Tool =
-                    WaitForEquippedTool(
-                        5
+                    print(
+                        "[MAIN] PRIORITY: AUTO EGG"
                     )
 
-            end
+
+                    print(
+                        "=========================================="
+                    )
 
 
-            if not Tool then
-
-                print(
-                    "[AUTO EGG] Tool tidak muncul."
-                )
-
-                return
-
-            end
+                    ProcessNormalEgg(
+                        Egg
+                    )
 
 
-            print(
-                "[AUTO EGG] TOOL:",
-                Tool.Name
-            )
+                    return
+
+                end
 
 
-            print(
-                "[AUTO EGG] TOOL UID:",
-                Tool:GetAttribute("UID")
-            )
-
-
-            --========================================
-            -- STEP 9.5
-            -- CHECK MONSTER PARASITE
-            --
-            -- IMPORTANT:
-            -- NO UID USED HERE
-            -- SCAN ENTIRE ottoko_store
-            --========================================
-
-            print(
-                "=========================================="
-            )
-
-
-            print(
-                "[AUTO EGG] STEP 9.5 -> CHECK PARASITE"
-            )
-
-
-            print(
-                "[AUTO EGG] SCANNING:",
-                "workspace.ottoko_store"
-            )
-
-
-            local ParasiteHandled =
-                CheckAndFeedParasite()
-
-
-            if ParasiteHandled then
+                --====================================
+                -- NO FUSE
+                -- NO EGG
+                --
+                -- PRIORITY #3
+                -- TREADMILL
+                --====================================
 
                 print(
-                    "[AUTO EGG] =========================================="
+                    "=========================================="
                 )
 
 
                 print(
-                    "[AUTO EGG] PARASITE PROCESS HANDLED"
+                    "[MAIN] NO FUSEABLE PET"
                 )
 
 
                 print(
-                    "[AUTO EGG] PLACE DI-SKIP"
+                    "[MAIN] NO VALID EGG"
                 )
 
 
                 print(
-                    "[AUTO EGG] -> NEXT EGG"
+                    "[MAIN] PRIORITY: TREADMILL"
                 )
 
 
                 print(
-                    "[AUTO EGG] =========================================="
+                    "=========================================="
                 )
 
 
-                return
+                EnterTreadmill()
 
-            end
 
+            end,
+            debug.traceback
+        )
 
-            --========================================
-            -- STEP 10
-            -- OWN PLOT
-            --========================================
 
-            print(
-                "[AUTO PLACE] Tool terdeteksi:",
-                Tool.Name
-            )
-
-
-            local Plot =
-                GetMyPlot()
-
-
-            if not Plot then
-
-                return
-
-            end
-
-
-            --========================================
-            -- STEP 11
-            -- FLY PLOT
-            --========================================
-
-            print(
-                "[AUTO PLACE] -> FLY OWN PLOT"
-            )
-
-
-            local ReachedPlot =
-                FlyToObject(
-                    Plot
-                )
-
-
-            if not ReachedPlot then
-
-                return
-
-            end
-
-
-            --========================================
-            -- STEP 12
-            -- CHECK TOOL AGAIN
-            --========================================
-
-            local CurrentTool =
-                GetEquippedTool()
-
-
-            if not CurrentTool then
-
-                warn(
-                    "[AUTO PLACE] Tool sudah tidak equipped."
-                )
-
-                return
-
-            end
-
-
-            --========================================
-            -- STEP 12.5
-            -- PARASITE SAFETY RECHECK
-            --========================================
-
-            print(
-                "[AUTO PLACE] RECHECK PARASITE..."
-            )
-
-
-            local ParasiteAfterPlot =
-                CheckAndFeedParasite()
-
-
-            if ParasiteAfterPlot then
-
-                print(
-                    "[AUTO PLACE] PARASITE TERDETEKSI."
-                )
-
-
-                print(
-                    "[AUTO PLACE] PLACE DIBATALKAN."
-                )
-
-
-                return
-
-            end
-
-
-            --========================================
-            -- STEP 13
-            -- PLACE
-            --========================================
-
-            local Placed =
-                PlaceEgg(
-                    CurrentTool,
-                    Plot
-                )
-
-
-            if not Placed then
-
-                warn(
-                    "[AUTO PLACE] Place gagal."
-                )
-
-                return
-
-            end
-
-
-            print(
-                "[AUTO PLACE] PLACE REQUEST SENT."
-            )
-
-
-            --========================================
-            -- STEP 14
-            -- WAIT TOOL GONE
-            --========================================
-
-            local Gone =
-                WaitToolGone(
-                    CurrentTool,
-                    WAIT_TOOL_GONE
-                )
-
-
-            if Gone then
-
-                print(
-                    "[AUTO PLACE] Tool sudah hilang."
-                )
-
-            else
-
-                warn(
-                    "[AUTO PLACE] Tool masih ada."
-                )
-
-            end
-
-
-            --========================================
-            -- STEP 15
-            -- START HATCH
-            --========================================
-
-            print(
-                "[AUTO HATCH] START HATCH PROCESS"
-            )
-
-
-            StartHatch()
-
-
-            --========================================
-            -- STEP 16
-            -- RESUME AFTER 5 SEC
-            --========================================
-
-            print(
-                "[AUTO HATCH] Menunggu",
-                HATCH_RESUME_TIME,
-                "detik..."
-            )
-
-
-            task.wait(
-                HATCH_RESUME_TIME
-            )
-
-
-            print(
-                "[AUTO EGG] RESUME -> CARI EGG BERIKUTNYA"
-            )
-
-
-        end,
-        debug.traceback
-    )
-
-
-    --================================================
-    -- RELEASE PROCESS LOCK
-    --================================================
-
-    ProcessRunning = false
+    ProcessRunning =
+        false
 
 
     if not Success then
 
         warn(
-            "[AUTO EGG] PROCESS ERROR:",
+            "[MAIN] PROCESS ERROR:",
             Error
         )
 
@@ -3900,19 +4277,23 @@ end
 
 
 --==================================================
--- START
+-- MAIN LOOP
 --==================================================
 
 task.spawn(function()
 
-
     print(
-        "=========================================="
+        "=================================================="
     )
 
 
     print(
-        " AUTO EGG CARRY"
+        " AUTO FUSE PET"
+    )
+
+
+    print(
+        " + AUTO EGG CARRY"
     )
 
 
@@ -3932,169 +4313,172 @@ task.spawn(function()
 
 
     print(
-        " + AUTO FLY MOVEMENT"
-    )
-
-
-    print(
-        " + MOVEMENT LOCK"
-    )
-
-
-    print(
-        " + PROCESS LOCK"
-    )
-
-    print(
-        " + AUTO FUSE"
-    )
-
-    print(
         " + AUTO TREADMILL"
     )
 
 
     print(
-        "=========================================="
+        " + AUTO FLY"
     )
 
 
     print(
-        "START DELAY:",
-        START_DELAY
+        "=================================================="
     )
 
 
     print(
-        "NORMAL MIN SCALE:",
-        NormalEggConfig.MIN_SCALE
+        "PRIORITY:"
     )
 
 
     print(
-        "NORMAL MIN PIVOT X:",
-        NormalEggConfig.MIN_WORLD_PIVOT_X
+        "1. FUSE PET"
     )
 
 
     print(
-        "HIGHLIGHT PRIORITY: FIRST"
+        "2. NORMAL/HIGHLIGHT EGG"
     )
 
 
     print(
-        "FLY SPEED:",
-        FLY_SPEED
+        "3. TREADMILL"
     )
 
 
     print(
-        "WAIT AFTER RETURN:",
-        WAIT_AFTER_RETURN
-    )
-
-
-    print(
-        "PLACE Y:",
-        FIXED_Y
-    )
-
-
-    print(
-        "MONSTER PARASITE:",
-        "ENABLED"
-    )
-
-
-    print(
-        "PARASITE DETECTION:",
-        "SCAN ALL ottoko_store"
-    )
-
-
-    print(
-        "PARASITE UID:",
-        "NOT REQUIRED"
-    )
-
-    print(
-        "FUSE MAX PET WEIGHT:",
-        MAX_PET_WEIGHT
-    )
-
-    print(
-        "FUSE BLACKLIST:",
-        "Crane"
-    )
-
-    print(
-        "TREADMILL:",
-        TREADMILL_NAME
-    )
-
-    print(
-        "NO EGG + NO 3 PET:",
-        "TREADMILL"
-    )
-
-
-    print(
-        "HATCH MAX:",
-        HATCH_MAX_TIME,
-        "SEC"
-    )
-
-
-    print(
-        "HATCH RESUME:",
-        HATCH_RESUME_TIME,
-        "SEC"
-    )
-
-
-    print(
-        "=========================================="
-    )
-
-
-    task.wait(
-        START_DELAY
-    )
-
-
-    print(
-        "=========================================="
-    )
-
-
-    print(
-        "[AUTO EGG] SYSTEM STARTED"
-    )
-
-
-    print(
-        "=========================================="
+        "=================================================="
     )
 
 
     while true do
 
 
-        if not ProcessRunning then
+        --================================================
+        -- ALWAYS CHECK FUSE FIRST
+        --================================================
 
-            Process()
+        local Pet1,
+            Pet2,
+            Pet3 =
+            FindThreeSamePets()
+
+
+        --================================================
+        -- FUSE AVAILABLE
+        --================================================
+
+        if Pet1 then
+
+            if not ProcessRunning then
+
+                Process()
+
+            end
+
+
+            task.wait(
+                LOOP_DELAY
+            )
+
+
+            continue
+
+        end
+
+
+        --================================================
+        -- NO FUSE
+        -- CHECK EGG
+        --================================================
+
+        local Egg =
+            GetBestEgg()
+
+
+        if Egg then
+
+            if TreadmillRunning then
+
+                print(
+                    "[MAIN] EGG AVAILABLE"
+                )
+
+
+                print(
+                    "[MAIN] EXIT TREADMILL"
+                )
+
+
+                ExitTreadmill()
+
+            end
+
+
+            if not ProcessRunning then
+
+                Process()
+
+            end
+
+
+            task.wait(
+                LOOP_DELAY
+            )
+
+
+            continue
+
+        end
+
+
+        --================================================
+        -- NO FUSE
+        -- NO EGG
+        -- TREADMILL
+        --================================================
+
+        if not TreadmillRunning then
+
+            print(
+                "=========================================="
+            )
+
+
+            print(
+                "[MAIN] NOTHING TO FUSE"
+            )
+
+
+            print(
+                "[MAIN] NOTHING TO CARRY"
+            )
+
+
+            print(
+                "[MAIN] -> TREADMILL"
+            )
+
+
+            print(
+                "=========================================="
+            )
+
+
+            EnterTreadmill()
 
         else
 
-            warn(
-                "[AUTO EGG] Previous Process masih aktif."
+            print(
+                "[TREADMILL] WAITING..."
             )
 
         end
 
 
         task.wait(
-            LOOP_DELAY
+            TREADMILL_CHECK_DELAY
         )
 
     end
