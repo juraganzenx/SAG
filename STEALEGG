@@ -1,4 +1,4 @@
---========================================a==========
+--==================================================
 -- AUTO EGG CARRY + AUTO PLACE + AUTO HATCH
 -- AUTO FLY MOVEMENT VERSION
 --
@@ -524,7 +524,7 @@ local function AutoFlyToPosition(
 
         BV.Velocity =
             Direction * CurrentSpeed
-            
+
         --============================================
         -- FACE TARGET
         --============================================
@@ -2377,9 +2377,17 @@ local function Process()
             )
 
 
+            local StartPosition = GetPosition(StartArea)
+
+            if StartPosition then
+                StartPosition = StartPosition + Vector3.new(0, 5, 0)
+            end
+
             local StartReached =
-                FlyToObject(
-                    StartArea
+                AutoFlyToPosition(
+                    StartPosition,
+                    REACH_DISTANCE,
+                    "MAIN:StartArea"
                 )
 
 
