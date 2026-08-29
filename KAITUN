@@ -130,7 +130,7 @@ local MAX_PLOT =
 
 local Blacklist = {
 
-    ["Trap"] = true,
+    ["Crane"] = true,
 
 }
 
