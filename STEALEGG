@@ -49,7 +49,7 @@ local EGG_FOLDER_NAME = "AreaEggSlotsClient"
 -- WALK
 --==================================================
 
-local WALK_SPEED = 800
+local WALK_SPEED = 1000
 local REACH_DISTANCE = 11
 
 
