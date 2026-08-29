@@ -1,4 +1,4 @@
---==================================================
+--================================================z==
 -- AUTO EGG CARRY + AUTO PLACE + AUTO HATCH
 -- AUTO FLY MOVEMENT VERSION
 --
@@ -53,7 +53,7 @@ local EGG_FOLDER_NAME = "AreaEggSlotsClient"
 
 local FLY_SPEED = 800
 
-local REACH_DISTANCE = 1
+local REACH_DISTANCE = 5
 
 local FLY_UPDATE_DELAY = 0.03
 
@@ -520,10 +520,20 @@ local function AutoFlyToPosition(
         -- VELOCITY
         --============================================
 
-        local CurrentSpeed = FLY_SPEED
+        local CurrentSpeed =
+            math.min(
+                FLY_SPEED,
+                math.max(
+                    100,
+                    CurrentDistance * 4
+                )
+            )
+
 
         BV.Velocity =
-            Direction * CurrentSpeed
+            Direction *
+            CurrentSpeed
+
 
         --============================================
         -- FACE TARGET
@@ -2389,7 +2399,6 @@ local function Process()
                     REACH_DISTANCE,
                     "MAIN:StartArea"
                 )
-
 
             if not StartReached then
 
