@@ -1,6 +1,7 @@
---GABUNGAN
+
 --==================================================
 -- AUTO EGG CARRY + AUTO PLACE + AUTO HATCH
+-- FIX DOUBLE MOVEMENT VERSION
 --
 -- FLOW:
 --
@@ -18,11 +19,11 @@
 -- -> HATCH
 -- -> AFTER 5 SEC -> FIND NEXT EGG
 --
--- HATCH MAX TIME = 10 SEC
--- RESUME MAIN LOOP = 5 SEC
---
--- IF NO EGG TO CARRY:
--- -> PUBLIC SERVER HOP
+-- FIX:
+-- 1. PROCESS LOCK
+-- 2. MOVEMENT LOCK
+-- 3. HATCH MOVEMENT LOCK
+-- 4. NO DOUBLE HUMANOID MOVETO
 --==================================================
 
 
@@ -43,12 +44,14 @@ local LocalPlayer = Players.LocalPlayer
 local START_AREA_NAME = "StartArea"
 local EGG_FOLDER_NAME = "AreaEggSlotsClient"
 
+
 --==================================================
 -- WALK
 --==================================================
 
 local WALK_SPEED = 800
 local REACH_DISTANCE = 11
+
 
 --==================================================
 -- CARRY
@@ -57,11 +60,10 @@ local REACH_DISTANCE = 11
 local CARRY_DELAY = 0
 local AFTER_CARRY_START_DELAY = 0.2
 
--- Setelah sampai StartArea
 local WAIT_AFTER_RETURN = 3
 
--- Jika tool belum muncul
 local TOOL_CHECK_DELAY = 0.5
+
 
 --==================================================
 -- PLACE
@@ -76,6 +78,7 @@ local WAIT_TOOL_GONE = 5
 local MIN_PLOT = 1
 local MAX_PLOT = 8
 
+
 --==================================================
 -- HATCH
 --==================================================
@@ -85,11 +88,11 @@ local WALK_TO_EGG_DISTANCE = 4
 
 local HATCH_MAX_TIME = 10
 
--- Setelah 5 detik kembali cari egg baru
 local HATCH_RESUME_TIME = 5
 
 local HATCH_WALK_DELAY = 0.1
 local PROMPT_CHECK_DELAY = 0.2
+
 
 --==================================================
 -- MAIN
@@ -109,7 +112,7 @@ local NormalEggConfig = {
 
     MIN_SCALE = 13,
 
-    MIN_WORLD_PIVOT_X = 2000
+    MIN_WORLD_PIVOT_X = 2600
 
 }
 
@@ -146,6 +149,70 @@ local PlaceEggRemote =
 
 
 --==================================================
+-- LOCK SYSTEM
+--==================================================
+
+-- Mencegah Process utama berjalan dobel
+local ProcessRunning = false
+
+
+-- Mencegah dua fungsi movement memakai Humanoid
+-- pada waktu yang sama
+local MovementOwner = nil
+
+
+-- Status hatch
+local HatchRunning = false
+
+
+--==================================================
+-- MOVEMENT LOCK
+--==================================================
+
+local function AcquireMovementLock(Name)
+
+    if MovementOwner ~= nil then
+
+        return false
+
+    end
+
+    MovementOwner = Name
+
+    print(
+        "[MOVEMENT LOCK] ACQUIRED:",
+        Name
+    )
+
+    return true
+
+end
+
+
+local function ReleaseMovementLock(Name)
+
+    if MovementOwner == Name then
+
+        print(
+            "[MOVEMENT LOCK] RELEASE:",
+            Name
+        )
+
+        MovementOwner = nil
+
+    end
+
+end
+
+
+local function GetMovementOwner()
+
+    return MovementOwner
+
+end
+
+
+--==================================================
 -- CHARACTER
 --==================================================
 
@@ -158,26 +225,32 @@ end
 
 local function GetHumanoid()
 
-    local Character = GetCharacter()
+    local Character =
+        GetCharacter()
 
     if not Character then
         return nil
     end
 
-    return Character:FindFirstChildOfClass("Humanoid")
+    return Character:FindFirstChildOfClass(
+        "Humanoid"
+    )
 
 end
 
 
 local function GetRoot()
 
-    local Character = GetCharacter()
+    local Character =
+        GetCharacter()
 
     if not Character then
         return nil
     end
 
-    return Character:FindFirstChild("HumanoidRootPart")
+    return Character:FindFirstChild(
+        "HumanoidRootPart"
+    )
 
 end
 
@@ -188,8 +261,11 @@ end
 
 local function StopMovement()
 
-    local Humanoid = GetHumanoid()
-    local Root = GetRoot()
+    local Humanoid =
+        GetHumanoid()
+
+    local Root =
+        GetRoot()
 
     if Humanoid then
 
@@ -261,6 +337,8 @@ end
 
 --==================================================
 -- WALK TO OBJECT
+--
+-- ONLY ONE WALK CAN RUN
 --==================================================
 
 local function WalkToObject(
@@ -276,61 +354,92 @@ local function WalkToObject(
         Distance
         or REACH_DISTANCE
 
-    local Humanoid = GetHumanoid()
-    local Root = GetRoot()
+
+    --================================================
+    -- MOVEMENT LOCK
+    --================================================
+
+    local LockName =
+        "MAIN:" .. Object.Name
+
+    if not AcquireMovementLock(
+        LockName
+    ) then
+
+        warn(
+            "[AUTO EGG] Movement busy:",
+            GetMovementOwner(),
+            "| Requested:",
+            LockName
+        )
+
+        return false
+
+    end
+
+
+    local Success = false
+
+    local Humanoid =
+        GetHumanoid()
+
+    local Root =
+        GetRoot()
 
     if not Humanoid or not Root then
+
+        ReleaseMovementLock(
+            LockName
+        )
+
         return false
+
     end
 
-    local Position =
-        GetPosition(Object)
-
-    if not Position then
-        return false
-    end
-
-    Humanoid.WalkSpeed =
-        WALK_SPEED
 
     print(
         "[AUTO EGG] WALK TO:",
         Object.Name
     )
 
-    local StartTime = tick()
+
+    local StartTime =
+        tick()
+
 
     while true do
 
-        Root = GetRoot()
-        Humanoid = GetHumanoid()
+        Root =
+            GetRoot()
 
-        if not Root or not Humanoid then
+        Humanoid =
+            GetHumanoid()
 
-            StopMovement()
 
-            return false
+        if not Root
+            or not Humanoid then
+
+            break
 
         end
+
 
         if not Object.Parent then
 
-            StopMovement()
-
-            return false
+            break
 
         end
 
-        Position =
+
+        local Position =
             GetPosition(Object)
 
         if not Position then
 
-            StopMovement()
-
-            return false
+            break
 
         end
+
 
         local CurrentDistance =
             (
@@ -338,13 +447,17 @@ local function WalkToObject(
                 - Position
             ).Magnitude
 
-        if CurrentDistance <= Distance then
+
+        if CurrentDistance <=
+            Distance then
 
             print(
                 "[AUTO EGG] REACHED:",
                 Object.Name,
                 "| Distance:",
-                math.floor(CurrentDistance * 10) / 10
+                math.floor(
+                    CurrentDistance * 10
+                ) / 10
             )
 
             StopMovement()
@@ -353,16 +466,21 @@ local function WalkToObject(
 
             StopMovement()
 
-            return true
+            Success = true
+
+            break
 
         end
+
 
         Humanoid.WalkSpeed =
             WALK_SPEED
 
+
         Humanoid:MoveTo(
             Position
         )
+
 
         if tick() - StartTime > 120 then
 
@@ -371,15 +489,25 @@ local function WalkToObject(
                 Object.Name
             )
 
-            StopMovement()
-
-            return false
+            break
 
         end
+
 
         RunService.Heartbeat:Wait()
 
     end
+
+
+    StopMovement()
+
+
+    ReleaseMovementLock(
+        LockName
+    )
+
+
+    return Success
 
 end
 
@@ -474,7 +602,8 @@ local function HasHighlight(Egg)
         Egg:GetDescendants()
     ) do
 
-        if Object.ClassName == "Highlight" then
+        if Object.ClassName ==
+            "Highlight" then
 
             return true
 
@@ -501,6 +630,7 @@ local function GetHighlightEgg()
         return nil
     end
 
+
     local EggFolder =
         Workspace:FindFirstChild(
             EGG_FOLDER_NAME
@@ -515,6 +645,7 @@ local function GetHighlightEgg()
         return nil
 
     end
+
 
     for _, Object in ipairs(
         EggFolder:GetDescendants()
@@ -552,6 +683,7 @@ local function GetLargestNormalEgg()
         return nil
     end
 
+
     local EggFolder =
         Workspace:FindFirstChild(
             EGG_FOLDER_NAME
@@ -561,6 +693,7 @@ local function GetLargestNormalEgg()
         return nil
     end
 
+
     local SelectedEgg = nil
 
     local LargestScale =
@@ -568,6 +701,7 @@ local function GetLargestNormalEgg()
 
     local HighestPivotX =
         NormalEggConfig.MIN_WORLD_PIVOT_X
+
 
     for _, Object in ipairs(
         EggFolder:GetDescendants()
@@ -583,12 +717,15 @@ local function GetLargestNormalEgg()
                 local PivotX =
                     GetEggWorldPivotX(Object)
 
+
                 if Scale >
                     NormalEggConfig.MIN_SCALE
                     and PivotX >
                     NormalEggConfig.MIN_WORLD_PIVOT_X then
 
-                    if Scale > LargestScale then
+
+                    if Scale >
+                        LargestScale then
 
                         LargestScale =
                             Scale
@@ -599,8 +736,11 @@ local function GetLargestNormalEgg()
                         SelectedEgg =
                             Object
 
-                    elseif Scale == LargestScale
-                        and PivotX > HighestPivotX then
+
+                    elseif Scale ==
+                        LargestScale
+                        and PivotX >
+                        HighestPivotX then
 
                         HighestPivotX =
                             PivotX
@@ -618,6 +758,7 @@ local function GetLargestNormalEgg()
 
     end
 
+
     if SelectedEgg then
 
         print(
@@ -631,6 +772,7 @@ local function GetLargestNormalEgg()
 
     end
 
+
     return SelectedEgg
 
 end
@@ -642,12 +784,9 @@ end
 
 local function GetBestEgg()
 
-    --================================================
-    -- PRIORITY 1 HIGHLIGHT
-    --================================================
-
     local HighlightEgg =
         GetHighlightEgg()
+
 
     if HighlightEgg then
 
@@ -659,12 +798,10 @@ local function GetBestEgg()
 
     end
 
-    --================================================
-    -- PRIORITY 2 NORMAL
-    --================================================
 
     local NormalEgg =
         GetLargestNormalEgg()
+
 
     if NormalEgg then
 
@@ -676,6 +813,7 @@ local function GetBestEgg()
 
     end
 
+
     return nil
 
 end
@@ -683,8 +821,6 @@ end
 
 --==================================================
 -- GET EQUIPPED TOOL
---
--- workspace[Username]
 --==================================================
 
 local function GetEquippedTool()
@@ -698,6 +834,7 @@ local function GetEquippedTool()
         return nil
     end
 
+
     for _, Object in ipairs(
         CharacterFolder:GetChildren()
     ) do
@@ -710,15 +847,14 @@ local function GetEquippedTool()
 
     end
 
+
     return nil
 
 end
 
 
 --==================================================
--- WAIT FOR EQUIPPED TOOL
---
--- Tunggu maksimal beberapa detik
+-- WAIT EQUIPPED TOOL
 --==================================================
 
 local function WaitForEquippedTool(
@@ -728,10 +864,13 @@ local function WaitForEquippedTool(
     local StartTime =
         tick()
 
-    while tick() - StartTime < Timeout do
+
+    while tick() - StartTime <
+        Timeout do
 
         local Tool =
             GetEquippedTool()
+
 
         if Tool then
 
@@ -744,11 +883,13 @@ local function WaitForEquippedTool(
 
         end
 
+
         task.wait(
             TOOL_CHECK_DELAY
         )
 
     end
+
 
     return nil
 
@@ -768,8 +909,10 @@ local function CarryEgg(Egg)
 
     end
 
+
     local UID =
         Egg.Name
+
 
     print(
         "=========================================="
@@ -789,6 +932,7 @@ local function CarryEgg(Egg)
         "=========================================="
     )
 
+
     local Args = {
 
         [1] = {
@@ -799,6 +943,7 @@ local function CarryEgg(Egg)
 
     }
 
+
     local Success, Result =
         pcall(function()
 
@@ -807,6 +952,7 @@ local function CarryEgg(Egg)
             )
 
         end)
+
 
     print(
         "[AUTO EGG] Carry Success:",
@@ -818,16 +964,18 @@ local function CarryEgg(Egg)
         Result
     )
 
+
     if not Success then
 
         warn(
             "[AUTO EGG] Carry error:",
-                       Result
+            Result
         )
 
         return false
 
     end
+
 
     if Result == false then
 
@@ -839,6 +987,7 @@ local function CarryEgg(Egg)
         return false
 
     end
+
 
     return true
 
@@ -866,14 +1015,17 @@ local function GetMyPlot()
 
     end
 
+
     for PlotNumber =
         MIN_PLOT,
         MAX_PLOT do
+
 
         local Plot =
             Plots:FindFirstChild(
                 tostring(PlotNumber)
             )
+
 
         if Plot then
 
@@ -882,12 +1034,14 @@ local function GetMyPlot()
                     "PlotSign"
                 )
 
+
             if PlotSign then
 
                 local PlayerPlotSign =
                     PlotSign:FindFirstChild(
                         "PlayerPlotSign"
                     )
+
 
                 if PlayerPlotSign then
 
@@ -896,12 +1050,14 @@ local function GetMyPlot()
                             "Frame"
                         )
 
+
                     if Frame then
 
                         local PlayerName =
                             Frame:FindFirstChild(
                                 "PlayerName"
                             )
+
 
                         if PlayerName then
 
@@ -911,6 +1067,7 @@ local function GetMyPlot()
                                 "Owner:",
                                 PlayerName.Text
                             )
+
 
                             if PlayerName.Text ==
                                 LocalPlayer.Name then
@@ -936,9 +1093,11 @@ local function GetMyPlot()
 
     end
 
+
     warn(
         "[AUTO PLACE] Plot milik sendiri tidak ditemukan"
     )
+
 
     return nil
 
@@ -954,6 +1113,7 @@ local function GetPlotArea(Plot)
     local BiggestPart = nil
     local BiggestArea = 0
 
+
     for _, Object in ipairs(
         Plot:GetDescendants()
     ) do
@@ -963,6 +1123,7 @@ local function GetPlotArea(Plot)
             local Name =
                 Object.Name:lower()
 
+
             if not Name:find("sign")
                 and not Name:find("playername")
                 and not Name:find("deco")
@@ -970,9 +1131,11 @@ local function GetPlotArea(Plot)
                 and not Name:find("wall")
                 and not Name:find("fence") then
 
+
                 local Area =
                     Object.Size.X *
                     Object.Size.Z
+
 
                 if Area > BiggestArea then
 
@@ -990,6 +1153,7 @@ local function GetPlotArea(Plot)
 
     end
 
+
     if BiggestPart then
 
         print(
@@ -1003,6 +1167,7 @@ local function GetPlotArea(Plot)
         )
 
     end
+
 
     return BiggestPart
 
@@ -1021,11 +1186,13 @@ local function GetRandomPosition(
     local Size =
         AreaPart.Size
 
+
     local MinX =
         -Size.X / 2 + MARGIN
 
     local MaxX =
         Size.X / 2 - MARGIN
+
 
     local MinZ =
         -Size.Z / 2 + MARGIN
@@ -1033,15 +1200,18 @@ local function GetRandomPosition(
     local MaxZ =
         Size.Z / 2 - MARGIN
 
+
     local LocalX =
         MinX +
         math.random() *
         (MaxX - MinX)
 
+
     local LocalZ =
         MinZ +
         math.random() *
         (MaxZ - MinZ)
+
 
     local WorldPosition =
         AreaPart.CFrame:PointToWorldSpace(
@@ -1052,13 +1222,16 @@ local function GetRandomPosition(
             )
         )
 
+
     local PlotPivot =
         Plot:GetPivot()
+
 
     local PlotLocalPosition =
         PlotPivot:PointToObjectSpace(
             WorldPosition
         )
+
 
     return Vector3.new(
         PlotLocalPosition.X,
@@ -1085,8 +1258,10 @@ local function PlaceEgg(
 
     end
 
+
     local UID =
         Tool:GetAttribute("UID")
+
 
     if not UID then
 
@@ -1099,8 +1274,10 @@ local function PlaceEgg(
 
     end
 
+
     local AreaPart =
         GetPlotArea(Plot)
+
 
     if not AreaPart then
 
@@ -1108,11 +1285,13 @@ local function PlaceEgg(
 
     end
 
+
     local RandomPosition =
         GetRandomPosition(
             Plot,
             AreaPart
         )
+
 
     local LocalCFrame =
         CFrame.new(
@@ -1120,6 +1299,7 @@ local function PlaceEgg(
             FIXED_Y,
             RandomPosition.Z
         )
+
 
     print(
         "=========================================="
@@ -1158,6 +1338,7 @@ local function PlaceEgg(
         "=========================================="
     )
 
+
     local Args = {
 
         [1] = {
@@ -1171,6 +1352,7 @@ local function PlaceEgg(
 
     }
 
+
     local Success, Result =
         pcall(function()
 
@@ -1179,6 +1361,7 @@ local function PlaceEgg(
             )
 
         end)
+
 
     print(
         "[AUTO PLACE] Success:",
@@ -1190,16 +1373,18 @@ local function PlaceEgg(
         Result
     )
 
+
     if not Success then
 
         warn(
             "[AUTO PLACE] Error:",
-                       Result
+            Result
         )
 
         return false
 
     end
+
 
     return true
 
@@ -1218,8 +1403,10 @@ local function WaitToolGone(
     local StartTime =
         tick()
 
+
     while tick() - StartTime <
         Timeout do
+
 
         if not Tool.Parent then
 
@@ -1227,8 +1414,10 @@ local function WaitToolGone(
 
         end
 
+
         local CurrentTool =
             GetEquippedTool()
+
 
         if CurrentTool ~= Tool then
 
@@ -1236,9 +1425,11 @@ local function WaitToolGone(
 
         end
 
+
         task.wait(0.1)
 
     end
+
 
     return false
 
@@ -1246,7 +1437,7 @@ end
 
 
 --==================================================
--- FIND ACTIVE PLACED EGG RENDERS
+-- PLACED EGG
 --==================================================
 
 local UserId =
@@ -1259,9 +1450,11 @@ local function GetActiveRenders()
 
     local Renders = {}
 
+
     for _, Object in ipairs(
         Workspace:GetChildren()
     ) do
+
 
         if Object.Name ==
             "PlacedEggRenders"
@@ -1275,6 +1468,7 @@ local function GetActiveRenders()
         end
 
     end
+
 
     return Renders
 
@@ -1291,6 +1485,7 @@ local function IsMyEgg(Egg)
         return false
     end
 
+
     return string.match(
         Egg.Name,
         "^" .. UserId .. "_"
@@ -1300,7 +1495,7 @@ end
 
 
 --==================================================
--- GET EGG POSITION
+-- GET PLACED EGG POSITION
 --==================================================
 
 local function GetPlacedEggPosition(Egg)
@@ -1312,11 +1507,13 @@ local function GetPlacedEggPosition(Egg)
 
     end
 
+
     if Egg:IsA("BasePart") then
 
         return Egg.Position
 
     end
+
 
     if Egg:IsA("Model") then
 
@@ -1327,6 +1524,7 @@ local function GetPlacedEggPosition(Egg)
 
             end)
 
+
         if Success and Pivot then
 
             return Pivot.Position
@@ -1335,17 +1533,20 @@ local function GetPlacedEggPosition(Egg)
 
     end
 
+
     local Part =
         Egg:FindFirstChildWhichIsA(
             "BasePart",
             true
         )
 
+
     if Part then
 
         return Part.Position
 
     end
+
 
     return nil
 
@@ -1362,9 +1563,11 @@ local function FindMyPlacedEgg()
         GetActiveRenders()
     ) do
 
+
         for _, Egg in ipairs(
             Render:GetChildren()
         ) do
+
 
             if IsMyEgg(Egg) then
 
@@ -1376,6 +1579,7 @@ local function FindMyPlacedEgg()
 
     end
 
+
     return nil
 
 end
@@ -1383,6 +1587,8 @@ end
 
 --==================================================
 -- WALK TO PLACED EGG
+--
+-- MOVEMENT LOCK
 --==================================================
 
 local function WalkToPlacedEgg(Egg)
@@ -1391,47 +1597,70 @@ local function WalkToPlacedEgg(Egg)
         return false
     end
 
-    local Humanoid =
-        GetHumanoid()
 
-    if not Humanoid then
+    local LockName =
+        "HATCH:" .. Egg.Name
+
+
+    if not AcquireMovementLock(
+        LockName
+    ) then
+
+        warn(
+            "[AUTO HATCH] Movement sedang digunakan:",
+            GetMovementOwner()
+        )
+
         return false
+
     end
+
+
+    local Success = false
+
+
+    local StartTime =
+        tick()
+
 
     print(
         "[AUTO HATCH] WALK TO:",
         Egg.Name
     )
 
-    local StartTime =
-        tick()
 
     while tick() - StartTime <
         60 do
 
+
         if not Egg
             or not Egg.Parent then
 
-            return false
+            break
 
         end
+
 
         local Root =
             GetRoot()
 
-        Humanoid =
+        local Humanoid =
             GetHumanoid()
 
         local Position =
-            GetPlacedEggPosition(Egg)
+            GetPlacedEggPosition(
+                Egg
+            )
+
 
         if not Root
             or not Humanoid
             or not Position then
 
-            return false
+            break
 
         end
+
 
         local Distance =
             (
@@ -1439,28 +1668,39 @@ local function WalkToPlacedEgg(Egg)
                 Position
             ).Magnitude
 
+
         if Distance <=
             WALK_TO_EGG_DISTANCE then
 
+
             StopMovement()
+
 
             print(
                 "[AUTO HATCH] REACHED:",
                 Egg.Name,
                 "| Distance:",
-                math.floor(Distance * 10) / 10
+                math.floor(
+                    Distance * 10
+                ) / 10
             )
 
-            return true
+
+            Success = true
+
+            break
 
         end
+
 
         Humanoid.WalkSpeed =
             WALK_SPEED
 
+
         Humanoid:MoveTo(
             Position
         )
+
 
         task.wait(
             HATCH_WALK_DELAY
@@ -1468,9 +1708,16 @@ local function WalkToPlacedEgg(Egg)
 
     end
 
+
     StopMovement()
 
-    return false
+
+    ReleaseMovementLock(
+        LockName
+    )
+
+
+    return Success
 
 end
 
@@ -1487,22 +1734,28 @@ local function TriggerNearbyPrompts()
     local Root =
         GetRoot()
 
+
     if not Root then
         return
     end
+
 
     for _, Prompt in ipairs(
         Workspace:GetDescendants()
     ) do
 
+
         if Prompt:IsA("ProximityPrompt")
             and Prompt.Enabled then
+
 
             local Part =
                 Prompt.Parent
 
+
             if Part
                 and Part:IsA("BasePart") then
+
 
                 local Distance =
                     (
@@ -1510,20 +1763,30 @@ local function TriggerNearbyPrompts()
                         Part.Position
                     ).Magnitude
 
+
                 if Distance <
                     MAX_PROMPT_DISTANCE then
 
-                    if not TriggeredPrompts[Prompt] then
 
-                        TriggeredPrompts[Prompt] =
-                            true
+                    if not TriggeredPrompts[
+                        Prompt
+                    ] then
+
+
+                        TriggeredPrompts[
+                            Prompt
+                        ] = true
+
 
                         print(
                             "[AUTO HATCH] TRIGGER PROMPT:",
                             Prompt:GetFullName(),
                             "| Distance:",
-                            math.floor(Distance * 10) / 10
+                            math.floor(
+                                Distance * 10
+                            ) / 10
                         )
+
 
                         pcall(function()
 
@@ -1535,10 +1798,12 @@ local function TriggerNearbyPrompts()
 
                     end
 
+
                 else
 
-                    TriggeredPrompts[Prompt] =
-                        nil
+                    TriggeredPrompts[
+                        Prompt
+                    ] = nil
 
                 end
 
@@ -1553,14 +1818,13 @@ end
 
 --==================================================
 -- HATCH PROCESS
---
--- MAX 10 DETIK
 --==================================================
 
 local function HatchEggProcess()
 
     local Egg =
         FindMyPlacedEgg()
+
 
     if not Egg then
 
@@ -1571,6 +1835,7 @@ local function HatchEggProcess()
         return
 
     end
+
 
     print(
         "=========================================="
@@ -1588,24 +1853,19 @@ local function HatchEggProcess()
     )
 
     print(
-        "[AUTO HATCH] RESUME MAIN LOOP:",
-        HATCH_RESUME_TIME,
-        "SEC"
-    )
-
-    print(
         "=========================================="
     )
 
 
     --================================================
-    -- WALK
+    -- WALK TO EGG
     --================================================
 
     local Reached =
         WalkToPlacedEgg(
             Egg
         )
+
 
     if not Reached then
 
@@ -1624,11 +1884,14 @@ local function HatchEggProcess()
 
     TriggeredPrompts = {}
 
+
     local StartTime =
         tick()
 
+
     while tick() - StartTime <
         HATCH_MAX_TIME do
+
 
         if not Egg
             or not Egg.Parent then
@@ -1641,13 +1904,16 @@ local function HatchEggProcess()
 
         end
 
+
         TriggerNearbyPrompts()
+
 
         task.wait(
             PROMPT_CHECK_DELAY
         )
 
     end
+
 
     print(
         "[AUTO HATCH] Hatch timeout 10 detik."
@@ -1657,15 +1923,8 @@ end
 
 
 --==================================================
--- START HATCH IN BACKGROUND
---
--- Fungsi ini:
--- 1. Jalankan hatch
--- 2. Setelah 5 detik main loop boleh lanjut
+-- START HATCH
 --==================================================
-
-local HatchRunning = false
-
 
 local function StartHatch()
 
@@ -1679,11 +1938,30 @@ local function StartHatch()
 
     end
 
+
     HatchRunning = true
+
 
     task.spawn(function()
 
-        HatchEggProcess()
+        local Success, Error =
+            xpcall(
+                HatchEggProcess,
+                debug.traceback
+            )
+
+
+        if not Success then
+
+            warn(
+                "[AUTO HATCH] ERROR:",
+                Error
+            )
+
+            StopMovement()
+
+        end
+
 
         HatchRunning = false
 
@@ -1702,12 +1980,15 @@ local function GetServers()
 
     local Cursor = ""
 
+
     repeat
+
 
         local Url =
             "https://games.roblox.com/v1/games/"
             .. game.PlaceId
             .. "/servers/Public?sortOrder=Asc&limit=100"
+
 
         if Cursor ~= "" then
 
@@ -1720,6 +2001,7 @@ local function GetServers()
 
         end
 
+
         local Success, Result =
             pcall(function()
 
@@ -1728,6 +2010,7 @@ local function GetServers()
                 )
 
             end)
+
 
         if not Success then
 
@@ -1740,6 +2023,7 @@ local function GetServers()
 
         end
 
+
         local DecodeSuccess, Data =
             pcall(function()
 
@@ -1748,6 +2032,7 @@ local function GetServers()
                 )
 
             end)
+
 
         if not DecodeSuccess then
 
@@ -1759,12 +2044,15 @@ local function GetServers()
 
         end
 
+
         for _, Server in ipairs(
             Data.data or {}
         ) do
 
+
             if Server.id ~= game.JobId
                 and Server.playing < Server.maxPlayers then
+
 
                 table.insert(
                     Servers,
@@ -1775,12 +2063,15 @@ local function GetServers()
 
         end
 
+
         Cursor =
             Data.nextPageCursor
             or ""
 
+
     until Cursor == ""
         or #Servers > 0
+
 
     return Servers
 
@@ -1809,10 +2100,13 @@ local function ServerHop()
         "=========================================="
     )
 
+
     StopMovement()
+
 
     local Servers =
         GetServers()
+
 
     if #Servers == 0 then
 
@@ -1826,6 +2120,7 @@ local function ServerHop()
 
     end
 
+
     local Server =
         Servers[
             math.random(
@@ -1833,6 +2128,7 @@ local function ServerHop()
                 #Servers
             )
         ]
+
 
     print(
         "[AUTO EGG] Teleport:",
@@ -1842,6 +2138,7 @@ local function ServerHop()
         "/",
         Server.maxPlayers
     )
+
 
     local Success, Error =
         pcall(function()
@@ -1853,6 +2150,7 @@ local function ServerHop()
             )
 
         end)
+
 
     if not Success then
 
@@ -1875,74 +2173,13 @@ end
 local function Process()
 
     --================================================
-    -- STEP 1
-    -- CARI EGG
+    -- PROCESS LOCK
     --================================================
 
-    local Egg =
-        GetBestEgg()
-
-    if not Egg then
-
-        ServerHop()
-
-        return
-
-    end
-
-
-    --================================================
-    -- STEP 2
-    -- START AREA
-    --================================================
-
-    local StartArea =
-        GetStartArea()
-
-    if not StartArea then
+    if ProcessRunning then
 
         warn(
-            "[AUTO EGG] StartArea tidak ditemukan."
-        )
-
-        task.wait(2)
-
-        return
-
-    end
-
-
-    --================================================
-    -- STEP 3
-    -- WALK START
-    --================================================
-
-    print(
-        "[AUTO EGG] -> START AREA"
-    )
-
-    local StartReached =
-        WalkToObject(
-            StartArea
-        )
-
-    if not StartReached then
-
-        return
-
-    end
-
-
-    --================================================
-    -- STEP 4
-    -- VALIDASI EGG
-    --================================================
-
-    if not Egg
-        or not Egg.Parent then
-
-        print(
-            "[AUTO EGG] Egg sudah hilang."
+            "[AUTO EGG] Process masih berjalan -> SKIP"
         )
 
         return
@@ -1950,330 +2187,434 @@ local function Process()
     end
 
 
-    local IsHighlight =
-        HasHighlight(Egg)
+    ProcessRunning = true
 
-    if not IsHighlight then
 
-        local Scale =
-            GetEggScale(Egg)
+    local Success, Error =
+        xpcall(function()
 
-        local PivotX =
-            GetEggWorldPivotX(Egg)
 
-        if Scale <=
-            NormalEggConfig.MIN_SCALE
-            or PivotX <=
-            NormalEggConfig.MIN_WORLD_PIVOT_X then
+            --========================================
+            -- STEP 1
+            -- FIND EGG
+            --========================================
+
+            local Egg =
+                GetBestEgg()
+
+
+            if not Egg then
+
+                ServerHop()
+
+                return
+
+            end
+
+
+            --========================================
+            -- STEP 2
+            -- START AREA
+            --========================================
+
+            local StartArea =
+                GetStartArea()
+
+
+            if not StartArea then
+
+                warn(
+                    "[AUTO EGG] StartArea tidak ditemukan."
+                )
+
+                task.wait(2)
+
+                return
+
+            end
+
+
+            --========================================
+            -- STEP 3
+            -- WALK START
+            --========================================
 
             print(
-                "[AUTO EGG] Egg tidak valid lagi."
+                "[AUTO EGG] -> START AREA"
             )
 
-            return
 
-        end
-
-    end
-
-
-    --================================================
-    -- STEP 5
-    -- WALK EGG
-    --================================================
-
-    print(
-        "[AUTO EGG] -> EGG:",
-        Egg.Name
-    )
-
-    local ReachedEgg =
-        WalkToObject(
-            Egg
-        )
-
-    if not ReachedEgg then
-
-        return
-
-    end
+            local StartReached =
+                WalkToObject(
+                    StartArea
+                )
 
 
-    --================================================
-    -- STEP 6
-    -- CARRY
-    --================================================
+            if not StartReached then
 
-    task.wait(
-        AFTER_CARRY_START_DELAY
-    )
+                return
 
-    local Carried =
-        CarryEgg(Egg)
-
-    if not Carried then
-
-        warn(
-            "[AUTO EGG] Carry gagal."
-        )
-
-        return
-
-    end
-
-    task.wait(
-        CARRY_DELAY
-    )
+            end
 
 
-    --================================================
-    -- STEP 7
-    -- BALIK START
-    --================================================
+            --========================================
+            -- STEP 4
+            -- VALIDATE EGG
+            --========================================
 
-    print(
-        "[AUTO EGG] -> RETURN START AREA"
-    )
+            if not Egg
+                or not Egg.Parent then
 
-    local Returned =
-        WalkToObject(
-            StartArea
-        )
+                print(
+                    "[AUTO EGG] Egg sudah hilang."
+                )
 
-    if not Returned then
+                return
 
-        return
-
-    end
+            end
 
 
-    --================================================
-    -- STEP 8
-    -- WAIT 3 SEC
-    --================================================
-
-    print(
-        "[AUTO EGG] Sampai StartArea."
-    )
-
-    print(
-        "[AUTO EGG] Menunggu",
-        WAIT_AFTER_RETURN,
-        "detik sebelum cek Tool..."
-    )
-
-    task.wait(
-        WAIT_AFTER_RETURN
-    )
+            local IsHighlight =
+                HasHighlight(Egg)
 
 
-    --================================================
-    -- STEP 9
-    -- CHECK TOOL
-    --================================================
+            if not IsHighlight then
 
-    local Tool =
-        GetEquippedTool()
+                local Scale =
+                    GetEggScale(Egg)
 
-    if not Tool then
 
-        print(
-            "[AUTO EGG] Tool BELUM EQUIPPED."
-        )
+                local PivotX =
+                    GetEggWorldPivotX(Egg)
 
-        print(
-            "[AUTO EGG] Menunggu tool..."
-        )
 
-        Tool =
-            WaitForEquippedTool(
-                5
+                if Scale <=
+                    NormalEggConfig.MIN_SCALE
+                    or PivotX <=
+                    NormalEggConfig.MIN_WORLD_PIVOT_X then
+
+                    print(
+                        "[AUTO EGG] Egg tidak valid lagi."
+                    )
+
+                    return
+
+                end
+
+            end
+
+
+            --========================================
+            -- STEP 5
+            -- WALK EGG
+            --========================================
+
+            print(
+                "[AUTO EGG] -> EGG:",
+                Egg.Name
             )
 
-    end
+
+            local ReachedEgg =
+                WalkToObject(
+                    Egg
+                )
 
 
-    --================================================
-    -- JIKA TIDAK ADA TOOL
-    --================================================
+            if not ReachedEgg then
 
-    if not Tool then
+                return
 
-        print(
-            "[AUTO EGG] Tool tidak muncul."
-        )
-
-        -- Egg yang tadi kemungkinan masih ada
-        -- jadi Process berikutnya akan scan ulang
-
-        return
-
-    end
+            end
 
 
-    --================================================
-    -- STEP 10
-    -- FIND OWN PLOT
-    --================================================
+            --========================================
+            -- STEP 6
+            -- CARRY
+            --========================================
 
-    print(
-        "[AUTO PLACE] Tool terdeteksi:",
-        Tool.Name
-    )
-
-    local Plot =
-        GetMyPlot()
-
-    if not Plot then
-
-        return
-
-    end
-
-
-    --================================================
-    -- STEP 11
-    -- WALK TO PLOT
-    --================================================
-
-    local PlotPosition =
-        Plot:GetPivot().Position
-
-    print(
-        "[AUTO PLACE] -> OWN PLOT"
-    )
-
-    local ReachedPlot =
-        WalkToObject(
-            Plot
-        )
-
-    if not ReachedPlot then
-
-        -- fallback kalau pivot model tidak cocok
-        local Humanoid =
-            GetHumanoid()
-
-        if Humanoid then
-
-            Humanoid:MoveTo(
-                PlotPosition
+            task.wait(
+                AFTER_CARRY_START_DELAY
             )
 
-        end
 
-        return
+            local Carried =
+                CarryEgg(Egg)
 
-    end
+
+            if not Carried then
+
+                warn(
+                    "[AUTO EGG] Carry gagal."
+                )
+
+                return
+
+            end
+
+
+            task.wait(
+                CARRY_DELAY
+            )
+
+
+            --========================================
+            -- STEP 7
+            -- RETURN START
+            --========================================
+
+            print(
+                "[AUTO EGG] -> RETURN START AREA"
+            )
+
+
+            local Returned =
+                WalkToObject(
+                    StartArea
+                )
+
+
+            if not Returned then
+
+                return
+
+            end
+
+
+            --========================================
+            -- STEP 8
+            -- WAIT
+            --========================================
+
+            print(
+                "[AUTO EGG] Sampai StartArea."
+            )
+
+
+            print(
+                "[AUTO EGG] Menunggu",
+                WAIT_AFTER_RETURN,
+                "detik..."
+            )
+
+
+            task.wait(
+                WAIT_AFTER_RETURN
+            )
+
+
+            --========================================
+            -- STEP 9
+            -- CHECK TOOL
+            --========================================
+
+            local Tool =
+                GetEquippedTool()
+
+
+            if not Tool then
+
+                print(
+                    "[AUTO EGG] Tool BELUM EQUIPPED."
+                )
+
+
+                Tool =
+                    WaitForEquippedTool(
+                        5
+                    )
+
+            end
+
+
+            if not Tool then
+
+                print(
+                    "[AUTO EGG] Tool tidak muncul."
+                )
+
+                return
+
+            end
+
+
+            --========================================
+            -- STEP 10
+            -- OWN PLOT
+            --========================================
+
+            print(
+                "[AUTO PLACE] Tool terdeteksi:",
+                Tool.Name
+            )
+
+
+            local Plot =
+                GetMyPlot()
+
+
+            if not Plot then
+
+                return
+
+            end
+
+
+            --========================================
+            -- STEP 11
+            -- WALK PLOT
+            --========================================
+
+            print(
+                "[AUTO PLACE] -> OWN PLOT"
+            )
+
+
+            local ReachedPlot =
+                WalkToObject(
+                    Plot
+                )
+
+
+            if not ReachedPlot then
+
+                return
+
+            end
+
+
+            --========================================
+            -- STEP 12
+            -- CHECK TOOL AGAIN
+            --========================================
+
+            local CurrentTool =
+                GetEquippedTool()
+
+
+            if not CurrentTool then
+
+                warn(
+                    "[AUTO PLACE] Tool sudah tidak equipped."
+                )
+
+                return
+
+            end
+
+
+            --========================================
+            -- STEP 13
+            -- PLACE
+            --========================================
+
+            local Placed =
+                PlaceEgg(
+                    CurrentTool,
+                    Plot
+                )
+
+
+            if not Placed then
+
+                warn(
+                    "[AUTO PLACE] Place gagal."
+                )
+
+                return
+
+            end
+
+
+            print(
+                "[AUTO PLACE] PLACE REQUEST SENT."
+            )
+
+
+            --========================================
+            -- STEP 14
+            -- WAIT TOOL GONE
+            --========================================
+
+            local Gone =
+                WaitToolGone(
+                    CurrentTool,
+                    WAIT_TOOL_GONE
+                )
+
+
+            if Gone then
+
+                print(
+                    "[AUTO PLACE] Tool sudah hilang."
+                )
+
+            else
+
+                warn(
+                    "[AUTO PLACE] Tool masih ada."
+                )
+
+            end
+
+
+            --========================================
+            -- STEP 15
+            -- START HATCH
+            --========================================
+
+            print(
+                "[AUTO HATCH] START HATCH PROCESS"
+            )
+
+
+            StartHatch()
+
+
+            --========================================
+            -- STEP 16
+            -- RESUME AFTER 5 SEC
+            --========================================
+
+            print(
+                "[AUTO HATCH] Menunggu",
+                HATCH_RESUME_TIME,
+                "detik..."
+            )
+
+
+            task.wait(
+                HATCH_RESUME_TIME
+            )
+
+
+            print(
+                "[AUTO EGG] RESUME -> CARI EGG BERIKUTNYA"
+            )
+
+
+        end,
+        debug.traceback
+    )
 
 
     --================================================
-    -- STEP 12
-    -- CHECK TOOL AGAIN
+    -- RELEASE PROCESS LOCK
     --================================================
 
-    local CurrentTool =
-        GetEquippedTool()
+    ProcessRunning = false
 
-    if not CurrentTool then
+
+    if not Success then
 
         warn(
-            "[AUTO PLACE] Tool sudah tidak equipped."
+            "[AUTO EGG] PROCESS ERROR:",
+            Error
         )
 
-        return
+        StopMovement()
 
     end
-
-
-    --================================================
-    -- STEP 13
-    -- PLACE
-    --================================================
-
-    local Placed =
-        PlaceEgg(
-            CurrentTool,
-            Plot
-        )
-
-    if not Placed then
-
-        warn(
-            "[AUTO PLACE] Place gagal."
-        )
-
-        return
-
-    end
-
-
-    print(
-        "[AUTO PLACE] PLACE REQUEST SENT."
-    )
-
-
-    --================================================
-    -- STEP 14
-    -- WAIT TOOL GONE
-    --================================================
-
-    local Gone =
-        WaitToolGone(
-            CurrentTool,
-            WAIT_TOOL_GONE
-        )
-
-    if Gone then
-
-        print(
-            "[AUTO PLACE] Tool sudah hilang."
-        )
-
-    else
-
-        warn(
-            "[AUTO PLACE] Tool masih ada."
-        )
-
-    end
-
-
-    --================================================
-    -- STEP 15
-    -- START HATCH
-    --
-    -- Hatch berjalan background
-    --================================================
-
-    print(
-        "[AUTO HATCH] START HATCH PROCESS"
-    )
-
-    StartHatch()
-
-
-    --================================================
-    -- STEP 16
-    -- WAIT 5 SEC SAJA
-    --
-    -- Setelah ini Process berikutnya
-    -- langsung mencari egg baru.
-    --================================================
-
-    print(
-        "[AUTO HATCH] Menunggu",
-        HATCH_RESUME_TIME,
-        "detik..."
-    )
-
-    task.wait(
-        HATCH_RESUME_TIME
-    )
-
-    print(
-        "[AUTO EGG] RESUME -> CARI EGG BERIKUTNYA"
-    )
 
 end
 
@@ -2283,6 +2624,7 @@ end
 --==================================================
 
 task.spawn(function()
+
 
     print(
         "=========================================="
@@ -2301,42 +2643,58 @@ task.spawn(function()
     )
 
     print(
+        " + MOVEMENT LOCK"
+    )
+
+    print(
+        " + PROCESS LOCK"
+    )
+
+    print(
         "=========================================="
     )
+
 
     print(
         "START DELAY:",
         START_DELAY
     )
 
+
     print(
         "NORMAL MIN SCALE:",
         NormalEggConfig.MIN_SCALE
     )
+
 
     print(
         "NORMAL MIN PIVOT X:",
         NormalEggConfig.MIN_WORLD_PIVOT_X
     )
 
+
     print(
         "HIGHLIGHT PRIORITY: FIRST"
     )
+
 
     print(
         "WALK SPEED:",
         WALK_SPEED
     )
 
+
     print(
         "WAIT AFTER RETURN:",
         WAIT_AFTER_RETURN
     )
 
+
     print(
         "PLACE Y:",
         FIXED_Y
     )
+
 
     print(
         "HATCH MAX:",
@@ -2344,11 +2702,13 @@ task.spawn(function()
         "SEC"
     )
 
+
     print(
         "HATCH RESUME:",
         HATCH_RESUME_TIME,
         "SEC"
     )
+
 
     print(
         "=========================================="
@@ -2375,23 +2735,19 @@ task.spawn(function()
 
     while true do
 
-        local Success, Error =
-            pcall(
-                Process
-            )
 
-        if not Success then
+        if not ProcessRunning then
+
+            Process()
+
+        else
 
             warn(
-                "[AUTO EGG] MAIN ERROR:",
-                Error
+                "[AUTO EGG] Previous Process masih aktif."
             )
 
-            StopMovement()
-
-            task.wait(2)
-
         end
+
 
         task.wait(
             LOOP_DELAY
