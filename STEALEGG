@@ -107,7 +107,7 @@ local NormalEggConfig = {
 
     Enabled = true,
 
-    MIN_SCALE = 13,
+    MIN_SCALE = 1,
 
     MIN_WORLD_PIVOT_X = 2000
 
