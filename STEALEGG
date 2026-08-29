@@ -1,4 +1,4 @@
---================================================z==
+--=================================================a=
 -- AUTO EGG CARRY + AUTO PLACE + AUTO HATCH
 -- AUTO FLY MOVEMENT VERSION
 --
@@ -525,7 +525,7 @@ local function AutoFlyToPosition(
                 FLY_SPEED,
                 math.max(
                     100,
-                    CurrentDistance * 4
+                    CurrentDistance * 8
                 )
             )
 
@@ -2390,7 +2390,7 @@ local function Process()
             local StartPosition = GetPosition(StartArea)
 
             if StartPosition then
-                StartPosition = StartPosition + Vector3.new(0, 5, 0)
+                StartPosition = StartPosition + Vector3.new(-20, 10, 0)
             end
 
             local StartReached =
