@@ -119,7 +119,7 @@ local EGG_FOLDER_NAME =
 
 
 local NORMAL_MIN_SCALE =
-    1
+    10
 
 local NORMAL_MIN_WORLD_PIVOT_X =
     2600
