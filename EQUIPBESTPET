@@ -1,0 +1,1 @@
+while true do game:GetService("ReplicatedStorage"):WaitForChild("Packages"):WaitForChild("Networking"):WaitForChild("RF/Haul/WearBest"):InvokeServer() task.wait(30) end
