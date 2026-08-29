@@ -1,4 +1,4 @@
---FUSE
+--FUSEa
 --==================================================
 -- AUTO FUSE PET
 -- + AUTO EGG CARRY
@@ -119,7 +119,7 @@ local EGG_FOLDER_NAME =
 
 
 local NORMAL_MIN_SCALE =
-    10
+    1
 
 local NORMAL_MIN_WORLD_PIVOT_X =
     2600
@@ -239,7 +239,7 @@ local LOOP_DELAY =
 
 local Blacklist = {
 
-    ["Trao"] = true,
+    ["Crane"] = true,
 
 }
 
