@@ -239,7 +239,7 @@ local LOOP_DELAY =
 
 local Blacklist = {
 
-    ["CraAne"] = true,
+    ["Trao"] = true,
 
 }
 
