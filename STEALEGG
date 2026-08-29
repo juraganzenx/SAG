@@ -1,29 +1,31 @@
-
 --==================================================
 -- AUTO EGG CARRY + AUTO PLACE + AUTO HATCH
--- FIX DOUBLE MOVEMENT VERSION
+-- AUTO FLY MOVEMENT VERSION
 --
 -- FLOW:
 --
 -- FIND EGG
--- -> START AREA
--- -> EGG
+-- -> FLY START AREA
+-- -> FLY EGG
 -- -> CARRY
--- -> START AREA
+-- -> FLY START AREA
 -- -> WAIT 3 SEC
 -- -> CHECK EQUIPPED TOOL
+-- -> FLY OWN PLOT
 -- -> PLACE
 -- -> FIND OWN PLACED EGG
--- -> WALK TO EGG
+-- -> FLY TO EGG
 -- -> TRIGGER PROXIMITY PROMPT
 -- -> HATCH
 -- -> AFTER 5 SEC -> FIND NEXT EGG
 --
--- FIX:
--- 1. PROCESS LOCK
--- 2. MOVEMENT LOCK
--- 3. HATCH MOVEMENT LOCK
--- 4. NO DOUBLE HUMANOID MOVETO
+-- MOVEMENT:
+-- - NO Humanoid:MoveTo()
+-- - AUTO FLY
+-- - BODY VELOCITY
+-- - BODY GYRO
+-- - MOVEMENT LOCK
+-- - PROCESS LOCK
 --==================================================
 
 
@@ -46,11 +48,16 @@ local EGG_FOLDER_NAME = "AreaEggSlotsClient"
 
 
 --==================================================
--- WALK
+-- AUTO FLY
 --==================================================
 
-local WALK_SPEED = 1000
-local REACH_DISTANCE = 11
+local FLY_SPEED = 800
+
+local REACH_DISTANCE = 1
+
+local FLY_UPDATE_DELAY = 0.03
+
+local FLY_MAX_TIME = 120
 
 
 --==================================================
@@ -90,7 +97,6 @@ local HATCH_MAX_TIME = 10
 
 local HATCH_RESUME_TIME = 5
 
-local HATCH_WALK_DELAY = 0.1
 local PROMPT_CHECK_DELAY = 0.2
 
 
@@ -110,7 +116,7 @@ local NormalEggConfig = {
 
     Enabled = true,
 
-    MIN_SCALE = 13,
+    MIN_SCALE = 1,
 
     MIN_WORLD_PIVOT_X = 2600
 
@@ -152,16 +158,10 @@ local PlaceEggRemote =
 -- LOCK SYSTEM
 --==================================================
 
--- Mencegah Process utama berjalan dobel
 local ProcessRunning = false
 
-
--- Mencegah dua fungsi movement memakai Humanoid
--- pada waktu yang sama
 local MovementOwner = nil
 
-
--- Status hatch
 local HatchRunning = false
 
 
@@ -256,33 +256,13 @@ end
 
 
 --==================================================
--- STOP MOVEMENT
+-- STOP AUTO FLY
 --==================================================
 
-local function StopMovement()
-
-    local Humanoid =
-        GetHumanoid()
+local function StopFly()
 
     local Root =
         GetRoot()
-
-    if Humanoid then
-
-        Humanoid:Move(
-            Vector3.zero,
-            false
-        )
-
-        if Root then
-
-            Humanoid:MoveTo(
-                Root.Position
-            )
-
-        end
-
-    end
 
     if Root then
 
@@ -298,76 +278,42 @@ end
 
 
 --==================================================
--- GET OBJECT POSITION
+-- AUTO FLY TO POSITION
 --==================================================
 
-local function GetPosition(Object)
-
-    if not Object then
-        return nil
-    end
-
-    if Object:IsA("BasePart") then
-
-        return Object.Position
-
-    end
-
-    if Object:IsA("Model") then
-
-        local Success, Pivot =
-            pcall(function()
-
-                return Object:GetPivot()
-
-            end)
-
-        if Success and Pivot then
-
-            return Pivot.Position
-
-        end
-
-    end
-
-    return nil
-
-end
-
-
---==================================================
--- WALK TO OBJECT
---
--- ONLY ONE WALK CAN RUN
---==================================================
-
-local function WalkToObject(
-    Object,
-    Distance
+local function AutoFlyToPosition(
+    TargetPosition,
+    Distance,
+    LockName
 )
 
-    if not Object then
+    if not TargetPosition then
+
         return false
+
     end
+
 
     Distance =
         Distance
         or REACH_DISTANCE
 
 
+    LockName =
+        LockName
+        or "AUTO_FLY"
+
+
     --================================================
     -- MOVEMENT LOCK
     --================================================
-
-    local LockName =
-        "MAIN:" .. Object.Name
 
     if not AcquireMovementLock(
         LockName
     ) then
 
         warn(
-            "[AUTO EGG] Movement busy:",
+            "[AUTO FLY] Movement busy:",
             GetMovementOwner(),
             "| Requested:",
             LockName
@@ -378,15 +324,14 @@ local function WalkToObject(
     end
 
 
-    local Success = false
+    local Root =
+        GetRoot()
 
     local Humanoid =
         GetHumanoid()
 
-    local Root =
-        GetRoot()
 
-    if not Humanoid or not Root then
+    if not Root or not Humanoid then
 
         ReleaseMovementLock(
             LockName
@@ -398,14 +343,93 @@ local function WalkToObject(
 
 
     print(
-        "[AUTO EGG] WALK TO:",
-        Object.Name
+        "[AUTO FLY] START:",
+        LockName
     )
 
+
+    print(
+        "[AUTO FLY] TARGET:",
+        TargetPosition
+    )
+
+
+    --================================================
+    -- SAVE HUMANOID STATE
+    --================================================
+
+    local OldPlatformStand =
+        Humanoid.PlatformStand
+
+
+    local OldAutoRotate =
+        Humanoid.AutoRotate
+
+
+    Humanoid.PlatformStand = true
+    Humanoid.AutoRotate = false
+
+
+    --================================================
+    -- BODY GYRO
+    --================================================
+
+    local BG =
+        Instance.new("BodyGyro")
+
+    BG.Name =
+        "AutoEggFlyGyro"
+
+    BG.P =
+        9e4
+
+    BG.MaxTorque =
+        Vector3.new(
+            9e9,
+            9e9,
+            9e9
+        )
+
+    BG.CFrame =
+        Root.CFrame
+
+    BG.Parent =
+        Root
+
+
+    --================================================
+    -- BODY VELOCITY
+    --================================================
+
+    local BV =
+        Instance.new("BodyVelocity")
+
+    BV.Name =
+        "AutoEggFlyVelocity"
+
+    BV.MaxForce =
+        Vector3.new(
+            9e9,
+            9e9,
+            9e9
+        )
+
+    BV.Velocity =
+        Vector3.zero
+
+    BV.Parent =
+        Root
+
+
+    local Success = false
 
     local StartTime =
         tick()
 
+
+    --================================================
+    -- FLY LOOP
+    --================================================
 
     while true do
 
@@ -424,47 +448,47 @@ local function WalkToObject(
         end
 
 
-        if not Object.Parent then
+        --============================================
+        -- CHECK TIMEOUT
+        --============================================
+
+        if tick() - StartTime >
+            FLY_MAX_TIME then
+
+            warn(
+                "[AUTO FLY] TIMEOUT:",
+                LockName
+            )
 
             break
 
         end
 
 
-        local Position =
-            GetPosition(Object)
+        --============================================
+        -- DISTANCE
+        --============================================
 
-        if not Position then
-
-            break
-
-        end
+        local Offset =
+            TargetPosition -
+            Root.Position
 
 
         local CurrentDistance =
-            (
-                Root.Position
-                - Position
-            ).Magnitude
+            Offset.Magnitude
 
 
         if CurrentDistance <=
             Distance then
 
             print(
-                "[AUTO EGG] REACHED:",
-                Object.Name,
+                "[AUTO FLY] REACHED:",
+                LockName,
                 "| Distance:",
                 math.floor(
                     CurrentDistance * 10
                 ) / 10
             )
-
-            StopMovement()
-
-            RunService.Heartbeat:Wait()
-
-            StopMovement()
 
             Success = true
 
@@ -473,33 +497,119 @@ local function WalkToObject(
         end
 
 
-        Humanoid.WalkSpeed =
-            WALK_SPEED
+        --============================================
+        -- DIRECTION
+        --============================================
 
+        local Direction
 
-        Humanoid:MoveTo(
-            Position
-        )
+        if CurrentDistance > 0 then
 
+            Direction =
+                Offset.Unit
 
-        if tick() - StartTime > 120 then
+        else
 
-            warn(
-                "[AUTO EGG] WALK TIMEOUT:",
-                Object.Name
-            )
-
-            break
+            Direction =
+                Vector3.zero
 
         end
 
 
-        RunService.Heartbeat:Wait()
+        --============================================
+        -- VELOCITY
+        --============================================
+
+        local CurrentSpeed =
+            math.min(
+                FLY_SPEED,
+                math.max(
+                    20,
+                    CurrentDistance * 4
+                )
+            )
+
+
+        BV.Velocity =
+            Direction *
+            CurrentSpeed
+
+
+        --============================================
+        -- FACE TARGET
+        --============================================
+
+        local LookPosition =
+            Root.Position +
+            Direction
+
+
+        if Direction.Magnitude > 0 then
+
+            BG.CFrame =
+                CFrame.lookAt(
+                    Root.Position,
+                    LookPosition
+                )
+
+        end
+
+
+        task.wait(
+            FLY_UPDATE_DELAY
+        )
 
     end
 
 
-    StopMovement()
+    --================================================
+    -- STOP
+    --================================================
+
+    BV.Velocity =
+        Vector3.zero
+
+
+    StopFly()
+
+
+    task.wait()
+
+
+    if BG then
+
+        BG:Destroy()
+
+    end
+
+
+    if BV then
+
+        BV:Destroy()
+
+    end
+
+
+    --================================================
+    -- RESTORE HUMANOID
+    --================================================
+
+    Humanoid =
+        GetHumanoid()
+
+
+    if Humanoid then
+
+        Humanoid.PlatformStand =
+            OldPlatformStand
+
+        Humanoid.AutoRotate =
+            OldAutoRotate
+
+    end
+
+
+    StopFly()
 
 
     ReleaseMovementLock(
@@ -507,7 +617,107 @@ local function WalkToObject(
     )
 
 
+    print(
+        "[AUTO FLY] END:",
+        LockName,
+        "| Success:",
+        Success
+    )
+
+
     return Success
+
+end
+
+
+--==================================================
+-- GET OBJECT POSITION
+--==================================================
+
+local function GetPosition(Object)
+
+    if not Object then
+        return nil
+    end
+
+
+    if Object:IsA("BasePart") then
+
+        return Object.Position
+
+    end
+
+
+    if Object:IsA("Model") then
+
+        local Success, Pivot =
+            pcall(function()
+
+                return Object:GetPivot()
+
+            end)
+
+
+        if Success and Pivot then
+
+            return Pivot.Position
+
+        end
+
+    end
+
+
+    return nil
+
+end
+
+
+--==================================================
+-- FLY TO OBJECT
+--==================================================
+
+local function FlyToObject(
+    Object,
+    Distance
+)
+
+    if not Object then
+
+        return false
+
+    end
+
+
+    Distance =
+        Distance
+        or REACH_DISTANCE
+
+
+    local Position =
+        GetPosition(Object)
+
+
+    if not Position then
+
+        warn(
+            "[AUTO FLY] Position tidak ditemukan:",
+            Object.Name
+        )
+
+        return false
+
+    end
+
+
+    local LockName =
+        "MAIN:" .. Object.Name
+
+
+    return AutoFlyToPosition(
+        Position,
+        Distance,
+        LockName
+    )
 
 end
 
@@ -539,6 +749,7 @@ local function GetEggScale(Egg)
 
     end
 
+
     local Success, Scale =
         pcall(function()
 
@@ -546,11 +757,13 @@ local function GetEggScale(Egg)
 
         end)
 
+
     if Success and Scale then
 
         return Scale
 
     end
+
 
     return 0
 
@@ -570,6 +783,7 @@ local function GetEggWorldPivotX(Egg)
 
     end
 
+
     local Success, Pivot =
         pcall(function()
 
@@ -577,11 +791,13 @@ local function GetEggWorldPivotX(Egg)
 
         end)
 
+
     if Success and Pivot then
 
         return Pivot.Position.X
 
     end
+
 
     return 0
 
@@ -595,8 +811,11 @@ end
 local function HasHighlight(Egg)
 
     if not Egg then
+
         return false
+
     end
+
 
     for _, Object in ipairs(
         Egg:GetDescendants()
@@ -611,6 +830,7 @@ local function HasHighlight(Egg)
 
     end
 
+
     return false
 
 end
@@ -623,11 +843,16 @@ end
 local function GetHighlightEgg()
 
     if not HighlightEggConfig.Enabled then
+
         return nil
+
     end
 
+
     if not HighlightEggConfig.RequireHighlight then
+
         return nil
+
     end
 
 
@@ -635,6 +860,7 @@ local function GetHighlightEgg()
         Workspace:FindFirstChild(
             EGG_FOLDER_NAME
         )
+
 
     if not EggFolder then
 
@@ -668,6 +894,7 @@ local function GetHighlightEgg()
 
     end
 
+
     return nil
 
 end
@@ -680,7 +907,9 @@ end
 local function GetLargestNormalEgg()
 
     if not NormalEggConfig.Enabled then
+
         return nil
+
     end
 
 
@@ -689,8 +918,11 @@ local function GetLargestNormalEgg()
             EGG_FOLDER_NAME
         )
 
+
     if not EggFolder then
+
         return nil
+
     end
 
 
@@ -830,8 +1062,11 @@ local function GetEquippedTool()
             LocalPlayer.Name
         )
 
+
     if not CharacterFolder then
+
         return nil
+
     end
 
 
@@ -867,6 +1102,7 @@ local function WaitForEquippedTool(
 
     while tick() - StartTime <
         Timeout do
+
 
         local Tool =
             GetEquippedTool()
@@ -1005,6 +1241,7 @@ local function GetMyPlot()
             "Plots"
         )
 
+
     if not Plots then
 
         warn(
@@ -1111,6 +1348,7 @@ end
 local function GetPlotArea(Plot)
 
     local BiggestPart = nil
+
     local BiggestArea = 0
 
 
@@ -1455,7 +1693,6 @@ local function GetActiveRenders()
         Workspace:GetChildren()
     ) do
 
-
         if Object.Name ==
             "PlacedEggRenders"
             and #Object:GetChildren() > 0 then
@@ -1482,7 +1719,9 @@ end
 local function IsMyEgg(Egg)
 
     if not Egg then
+
         return false
+
     end
 
 
@@ -1586,15 +1825,26 @@ end
 
 
 --==================================================
--- WALK TO PLACED EGG
---
--- MOVEMENT LOCK
+-- FLY TO PLACED EGG
 --==================================================
 
-local function WalkToPlacedEgg(Egg)
+local function FlyToPlacedEgg(Egg)
 
     if not Egg then
+
         return false
+
+    end
+
+
+    local Position =
+        GetPlacedEggPosition(Egg)
+
+
+    if not Position then
+
+        return false
+
     end
 
 
@@ -1602,122 +1852,11 @@ local function WalkToPlacedEgg(Egg)
         "HATCH:" .. Egg.Name
 
 
-    if not AcquireMovementLock(
-        LockName
-    ) then
-
-        warn(
-            "[AUTO HATCH] Movement sedang digunakan:",
-            GetMovementOwner()
-        )
-
-        return false
-
-    end
-
-
-    local Success = false
-
-
-    local StartTime =
-        tick()
-
-
-    print(
-        "[AUTO HATCH] WALK TO:",
-        Egg.Name
-    )
-
-
-    while tick() - StartTime <
-        60 do
-
-
-        if not Egg
-            or not Egg.Parent then
-
-            break
-
-        end
-
-
-        local Root =
-            GetRoot()
-
-        local Humanoid =
-            GetHumanoid()
-
-        local Position =
-            GetPlacedEggPosition(
-                Egg
-            )
-
-
-        if not Root
-            or not Humanoid
-            or not Position then
-
-            break
-
-        end
-
-
-        local Distance =
-            (
-                Root.Position -
-                Position
-            ).Magnitude
-
-
-        if Distance <=
-            WALK_TO_EGG_DISTANCE then
-
-
-            StopMovement()
-
-
-            print(
-                "[AUTO HATCH] REACHED:",
-                Egg.Name,
-                "| Distance:",
-                math.floor(
-                    Distance * 10
-                ) / 10
-            )
-
-
-            Success = true
-
-            break
-
-        end
-
-
-        Humanoid.WalkSpeed =
-            WALK_SPEED
-
-
-        Humanoid:MoveTo(
-            Position
-        )
-
-
-        task.wait(
-            HATCH_WALK_DELAY
-        )
-
-    end
-
-
-    StopMovement()
-
-
-    ReleaseMovementLock(
+    return AutoFlyToPosition(
+        Position,
+        WALK_TO_EGG_DISTANCE,
         LockName
     )
-
-
-    return Success
 
 end
 
@@ -1736,7 +1875,9 @@ local function TriggerNearbyPrompts()
 
 
     if not Root then
+
         return
+
     end
 
 
@@ -1858,11 +1999,11 @@ local function HatchEggProcess()
 
 
     --================================================
-    -- WALK TO EGG
+    -- FLY TO EGG
     --================================================
 
     local Reached =
-        WalkToPlacedEgg(
+        FlyToPlacedEgg(
             Egg
         )
 
@@ -1916,7 +2057,9 @@ local function HatchEggProcess()
 
 
     print(
-        "[AUTO HATCH] Hatch timeout 10 detik."
+        "[AUTO HATCH] Hatch timeout:",
+        HATCH_MAX_TIME,
+        "detik."
     )
 
 end
@@ -1958,7 +2101,7 @@ local function StartHatch()
                 Error
             )
 
-            StopMovement()
+            StopFly()
 
         end
 
@@ -2101,7 +2244,7 @@ local function ServerHop()
     )
 
 
-    StopMovement()
+    StopFly()
 
 
     local Servers =
@@ -2236,16 +2379,16 @@ local function Process()
 
             --========================================
             -- STEP 3
-            -- WALK START
+            -- FLY START
             --========================================
 
             print(
-                "[AUTO EGG] -> START AREA"
+                "[AUTO EGG] -> FLY START AREA"
             )
 
 
             local StartReached =
-                WalkToObject(
+                FlyToObject(
                     StartArea
                 )
 
@@ -2306,17 +2449,17 @@ local function Process()
 
             --========================================
             -- STEP 5
-            -- WALK EGG
+            -- FLY EGG
             --========================================
 
             print(
-                "[AUTO EGG] -> EGG:",
+                "[AUTO EGG] -> FLY EGG:",
                 Egg.Name
             )
 
 
             local ReachedEgg =
-                WalkToObject(
+                FlyToObject(
                     Egg
                 )
 
@@ -2364,12 +2507,12 @@ local function Process()
             --========================================
 
             print(
-                "[AUTO EGG] -> RETURN START AREA"
+                "[AUTO EGG] -> FLY RETURN START AREA"
             )
 
 
             local Returned =
-                WalkToObject(
+                FlyToObject(
                     StartArea
                 )
 
@@ -2462,16 +2605,16 @@ local function Process()
 
             --========================================
             -- STEP 11
-            -- WALK PLOT
+            -- FLY PLOT
             --========================================
 
             print(
-                "[AUTO PLACE] -> OWN PLOT"
+                "[AUTO PLACE] -> FLY OWN PLOT"
             )
 
 
             local ReachedPlot =
-                WalkToObject(
+                FlyToObject(
                     Plot
                 )
 
@@ -2612,7 +2755,7 @@ local function Process()
             Error
         )
 
-        StopMovement()
+        StopFly()
 
     end
 
@@ -2640,6 +2783,10 @@ task.spawn(function()
 
     print(
         " + AUTO HATCH"
+    )
+
+    print(
+        " + AUTO FLY MOVEMENT"
     )
 
     print(
@@ -2679,8 +2826,8 @@ task.spawn(function()
 
 
     print(
-        "WALK SPEED:",
-        WALK_SPEED
+        "FLY SPEED:",
+        FLY_SPEED
     )
 
 
