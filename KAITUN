@@ -1,4 +1,4 @@
---===============================================zz===
+--==================================================
 -- AUTO FUSE PET
 -- -> FINISH REVEAL
 -- -> PLACE FUSED EGG
@@ -130,7 +130,7 @@ local MAX_PLOT =
 
 local Blacklist = {
 
-    ["Crane"] = true,
+    ["Trap"] = true,
 
 }
 
@@ -188,7 +188,7 @@ local NormalEggConfig = {
 
     Enabled = true,
 
-    MIN_SCALE = 10,
+    MIN_SCALE = 1,
 
     MIN_WORLD_PIVOT_X = 2600
 
@@ -240,7 +240,7 @@ local TREADMILL_FLY_DISTANCE =
 --==================================================
 
 local START_DELAY =
-    5
+    15
 
 local LOOP_DELAY =
     1
