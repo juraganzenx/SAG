@@ -1,4 +1,4 @@
---==================================================
+--========================================a==========
 -- AUTO EGG CARRY + AUTO PLACE + AUTO HATCH
 -- AUTO FLY MOVEMENT VERSION
 --
@@ -520,21 +520,11 @@ local function AutoFlyToPosition(
         -- VELOCITY
         --============================================
 
-        local CurrentSpeed =
-            math.min(
-                FLY_SPEED,
-                math.max(
-                    20,
-                    CurrentDistance * 4
-                )
-            )
-
+        local CurrentSpeed = FLY_SPEED
 
         BV.Velocity =
-            Direction *
-            CurrentSpeed
-
-
+            Direction * CurrentSpeed
+            
         --============================================
         -- FACE TARGET
         --============================================
