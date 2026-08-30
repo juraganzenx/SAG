@@ -1,39 +1,61 @@
---FUSEV5
+--FUSEV6
 --==================================================
 -- AUTO FUSE PET
+--
+-- FLOW:
+--
+-- #1 AUTO FUSE
+-- -> FIND 3 SAME PET
+-- -> LOAD PET #1
+-- -> LOAD PET #2
+-- -> LOAD PET #3
+-- -> BEGIN FUSE
 -- -> FINISH REVEAL
 -- -> WAIT FUSED EGG EQUIPPED
+-- -> FLY PLOT
 -- -> PLACE FUSED EGG
--- -> AUTO HATCH
+-- -> NO HATCH
 --
 -- JIKA TIDAK ADA 3 PET SIAP FUSE:
+--
+-- #2 FIELD EGG
 -- -> CARI FIELD EGG
+-- -> FORCE DOFF
+-- -> FLY START AREA
+-- -> FLY EGG
 -- -> CARRY
+-- -> RETURN START
+-- -> FLY PLOT
 -- -> PLACE
--- -> HATCH
+-- -> NO HATCH
 --
 -- JIKA TIDAK ADA FIELD EGG:
--- -> CHECK INVENTORY EGG
--- -> SNAPSHOT JUMLAH EGG
+--
+-- #3 INVENTORY EGG
+-- -> SNAPSHOT INVENTORY
+-- -> HATCH EXISTING PLACED EGG
 -- -> EQUIP EGG BY UID
 -- -> FLY PLOT
 -- -> PLACE
--- -> SELESAI SEMUA SNAPSHOT
--- -> TREADMILL
+-- -> PROCESS NEXT SNAPSHOT
+-- -> TIDAK RESCAN
+--
+-- #4 TREADMILL
+--
+-- HATCH:
+-- -> HANYA DILAKUKAN SEBELUM PROCESS
+--    INVENTORY EGG
+-- -> SCAN 1X
+-- -> HATCH SESUAI SNAPSHOT
 --
 -- INVENTORY EGG:
 -- -> Placement == nil
 -- -> AssetScale TERBESAR
 -- -> JIKA SCALE SAMA -> UID
--- -> TIDAK LOOP TERUS MENERUS
---
--- HATCH:
--- -> SCAN 1X PER PROCESS
--- -> HATCH SESUAI SNAPSHOT
+-- -> SNAPSHOT 1X
 --
 -- FIELD EGG:
--- -> SETIAP MULAI KE START AREA
--- -> SELALU AskDoff
+-- -> SETIAP MULAI FORCE DOFF
 --==================================================
 
 
@@ -76,7 +98,6 @@ local Save =
     require(
         Shared:WaitForChild("Save")
     )
-
 
 print("[SAVE] Save module loaded")
 
@@ -254,9 +275,6 @@ local HatchRunning = false
 
 --==================================================
 -- FORWARD DECLARATION
---
--- Penting karena beberapa fungsi di atas
--- memanggil ExitTreadmill.
 --==================================================
 
 local ExitTreadmill
@@ -840,7 +858,6 @@ end
 
 
 --==================================================
--- FUSE
 -- FIND 3 SAME PET
 --==================================================
 
@@ -962,7 +979,7 @@ end
 
 
 --==================================================
--- LOAD ONE PET
+-- LOAD PET
 --==================================================
 
 local function LoadOnePet(
@@ -1731,6 +1748,9 @@ end
 
 --==================================================
 -- PLACE FUSED EGG
+--
+-- IMPORTANT:
+-- TIDAK ADA HATCH DI SINI
 --==================================================
 
 local function PlaceFusedEgg(
@@ -1779,10 +1799,6 @@ local function PlaceFusedEgg(
     end
 
 
-    --==============================================
-    -- EXIT TREADMILL
-    --==============================================
-
     if TreadmillRunning then
 
         print(
@@ -1797,10 +1813,6 @@ local function PlaceFusedEgg(
     end
 
 
-    --==============================================
-    -- FLY OWN PLOT
-    --==============================================
-
     if not FlyToObject(
         Plot,
         REACH_DISTANCE,
@@ -1811,10 +1823,6 @@ local function PlaceFusedEgg(
 
     end
 
-
-    --==============================================
-    -- TOOL CHECK
-    --==============================================
 
     local CurrentTool =
         GetEquippedTool()
@@ -1842,10 +1850,6 @@ local function PlaceFusedEgg(
     end
 
 
-    --==============================================
-    -- PLACE
-    --==============================================
-
     local Placed =
         PlaceEggOnce(
             CurrentTool,
@@ -1864,10 +1868,6 @@ local function PlaceFusedEgg(
     end
 
 
-    --==============================================
-    -- WAIT TOOL GONE
-    --==============================================
-
     WaitToolGone(
         CurrentTool,
         WAIT_TOOL_GONE
@@ -1876,6 +1876,10 @@ local function PlaceFusedEgg(
 
     print(
         "[FUSE PLACE] SUCCESS"
+    )
+
+    print(
+        "[FUSE PLACE] NO HATCH"
     )
 
 
@@ -2060,10 +2064,6 @@ local function GetBestEgg()
                 )
 
 
-            --==========================================
-            -- HIGHLIGHT
-            --==========================================
-
             if Highlight then
 
 
@@ -2083,7 +2083,6 @@ local function GetBestEgg()
 
                 elseif Scale ==
                     BestHighlightScale
-
                     and PivotX >
                         BestHighlightPivotX then
 
@@ -2100,13 +2099,8 @@ local function GetBestEgg()
                 end
 
 
-            --==========================================
-            -- NORMAL
-            --==========================================
-
             elseif Scale >
                     NORMAL_MIN_SCALE
-
                 and PivotX >
                     NORMAL_MIN_PIVOT_X then
 
@@ -2127,7 +2121,6 @@ local function GetBestEgg()
 
                 elseif Scale ==
                     BestNormalScale
-
                     and PivotX >
                         BestNormalPivotX then
 
@@ -2153,28 +2146,13 @@ local function GetBestEgg()
     if BestHighlight then
 
         print(
-            "=========================================="
-        )
-
-        print(
             "[AUTO EGG] BEST HIGHLIGHT:",
-            BestHighlight.Name
-        )
-
-        print(
-            "[AUTO EGG] SCALE:",
-            BestHighlightScale
-        )
-
-        print(
-            "[AUTO EGG] PIVOT X:",
+            BestHighlight.Name,
+            "| SCALE:",
+            BestHighlightScale,
+            "| X:",
             BestHighlightPivotX
         )
-
-        print(
-            "=========================================="
-        )
-
 
         return BestHighlight
 
@@ -2184,28 +2162,13 @@ local function GetBestEgg()
     if BestNormal then
 
         print(
-            "=========================================="
-        )
-
-        print(
             "[AUTO EGG] BEST NORMAL:",
-            BestNormal.Name
-        )
-
-        print(
-            "[AUTO EGG] SCALE:",
-            BestNormalScale
-        )
-
-        print(
-            "[AUTO EGG] PIVOT X:",
+            BestNormal.Name,
+            "| SCALE:",
+            BestNormalScale,
+            "| X:",
             BestNormalPivotX
         )
-
-        print(
-            "=========================================="
-        )
-
 
         return BestNormal
 
@@ -2803,6 +2766,12 @@ end
 -- HATCH ALL
 --
 -- SNAPSHOT 1X
+--
+-- DIPANGGIL HANYA SEBELUM
+-- INVENTORY EGG PROCESS.
+--
+-- TIDAK DIPANGGIL SETELAH FUSE.
+-- TIDAK DIPANGGIL SETELAH FIELD EGG.
 --==================================================
 
 local function HatchAllPlacedEggs()
@@ -3204,6 +3173,9 @@ end
 
 --==================================================
 -- PROCESS FUSE CYCLE
+--
+-- IMPORTANT:
+-- TIDAK ADA HATCH DI SINI
 --==================================================
 
 local function TryFuseCycle()
@@ -3340,27 +3312,15 @@ local function TryFuseCycle()
 
 
     --==============================================
-    -- HATCH
+    -- NO HATCH
     --==============================================
 
-    HatchAllPlacedEggs()
-
-
-    task.wait(
-        HATCH_RESUME_TIME
-    )
-
-
     print(
-        "=========================================="
+        "[FUSE] HATCH SKIPPED"
     )
 
     print(
         "[FUSE] CYCLE COMPLETE"
-    )
-
-    print(
-        "=========================================="
     )
 
 
@@ -3371,6 +3331,9 @@ end
 
 --==================================================
 -- PROCESS FIELD EGG
+--
+-- IMPORTANT:
+-- TIDAK HATCH DI SINI
 --==================================================
 
 local function ProcessFieldEgg(
@@ -3680,14 +3643,11 @@ local function ProcessFieldEgg(
 
 
     --==============================================
-    -- HATCH SNAPSHOT
+    -- NO HATCH
     --==============================================
 
-    HatchAllPlacedEggs()
-
-
-    task.wait(
-        HATCH_RESUME_TIME
+    print(
+        "[FIELD EGG] HATCH SKIPPED"
     )
 
 
@@ -3800,8 +3760,6 @@ end
 
 --==================================================
 -- INVENTORY EGG SNAPSHOT
---
--- SCAN HANYA 1X
 --==================================================
 
 local function GetInventoryEggSnapshot()
@@ -4022,16 +3980,6 @@ local function EquipInventoryEgg(
 
         warn(
             "[INV EGG] UID TOOL BERBEDA!"
-        )
-
-        warn(
-            "[INV EGG] REQUESTED:",
-            UID
-        )
-
-        warn(
-            "[INV EGG] EQUIPPED:",
-            EquippedUID
         )
 
         return false
@@ -4306,30 +4254,19 @@ end
 --==================================================
 -- PROCESS INVENTORY EGGS
 --
--- IMPORTANT:
+-- FLOW:
 --
--- JUMLAH EGG DITENTUKAN DARI SNAPSHOT
--- AWAL PROCESS.
+-- SNAPSHOT INVENTORY
+-- ->
+-- HATCH EXISTING PLACED EGGS
+-- ->
+-- PROCESS SNAPSHOT
+-- ->
+-- EQUIP
+-- ->
+-- PLACE
 --
--- TIDAK:
--- while inventory > 0
---
--- TIDAK:
--- scan ulang setelah setiap egg.
---
--- CONTOH:
---
--- SNAPSHOT = 4
---
--- #1
--- #2
--- #3
--- #4
---
--- SELESAI.
---
--- EGG BARU YANG MASUK SETELAH SNAPSHOT
--- TIDAK IKUT BATCH INI.
+-- HATCH TIDAK DIULANG SETELAH SETIAP PLACE
 --==================================================
 
 local function ProcessInventoryEggs()
@@ -4344,7 +4281,7 @@ local function ProcessInventoryEggs()
 
 
     --==============================================
-    -- SNAPSHOT 1X
+    -- SNAPSHOT INVENTORY 1X
     --==============================================
 
     local Snapshot =
@@ -4373,8 +4310,57 @@ local function ProcessInventoryEggs()
 
 
     --==============================================
+    -- HATCH EXISTING PLACED EGG
+    --
+    -- INI SATU-SATUNYA HATCH DI MAIN FLOW
+    --==============================================
+
+    print(
+        "=========================================="
+    )
+
+    print(
+        "[MAIN] INVENTORY EGG FOUND"
+    )
+
+    print(
+        "[MAIN] -> HATCH EXISTING PLACED EGGS"
+    )
+
+    print(
+        "=========================================="
+    )
+
+
+    HatchAllPlacedEggs()
+
+
+    task.wait(
+        HATCH_RESUME_TIME
+    )
+
+
+    --==============================================
     -- PROCESS SNAPSHOT
     --==============================================
+
+    print(
+        "=========================================="
+    )
+
+    print(
+        "[INV EGG] START PLACE SNAPSHOT"
+    )
+
+    print(
+        "[INV EGG] TOTAL:",
+        Total
+    )
+
+    print(
+        "=========================================="
+    )
+
 
     for Index,
         EggData in ipairs(
@@ -4442,6 +4428,10 @@ local function ProcessInventoryEggs()
     )
 
     print(
+        "[INV EGG] HATCH SUDAH DILAKUKAN DI AWAL"
+    )
+
+    print(
         "=========================================="
     )
 
@@ -4459,7 +4449,13 @@ end
 -- #1 FUSE
 -- #2 FIELD EGG
 -- #3 INVENTORY EGG
+--     -> HATCH EXISTING EGG
+--     -> PLACE INVENTORY EGG
 -- #4 TREADMILL
+--
+-- HATCH TIDAK ADA DI FUSE
+-- HATCH TIDAK ADA SETELAH FIELD PLACE
+-- HATCH HANYA DI AWAL INVENTORY PROCESS
 --==================================================
 
 task.spawn(function()
@@ -4470,7 +4466,7 @@ task.spawn(function()
     )
 
     print(
-        " AUTO FUSE PET V5"
+        " AUTO FUSE PET V6"
     )
 
     print(
@@ -4490,7 +4486,15 @@ task.spawn(function()
     )
 
     print(
-        " 3. INVENTORY EGG SNAPSHOT"
+        " 3. INVENTORY EGG"
+    )
+
+    print(
+        "    -> HATCH EXISTING"
+    )
+
+    print(
+        "    -> PLACE SNAPSHOT"
     )
 
     print(
@@ -4725,3 +4729,4 @@ task.spawn(function()
     end
 
 end)
+
