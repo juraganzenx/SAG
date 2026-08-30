@@ -1,0 +1,28 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local AskTierRaise = ReplicatedStorage
+    :WaitForChild("Packages")
+    :WaitForChild("Networking")
+    :WaitForChild("RF/Treadmill/AskTierRaise")
+
+local Treadmills = {
+    "AngelicTreadmill",
+    "CelebrityTreadmill",
+    "DemonicTreadmill",
+    "FlameTreadmill",
+    "GoldenTreadmill",
+    "HackerTreadmill",
+    "Lucky BlockTreadmill",
+    "Sci-FiTreadmill",
+    "The FreezeTreadmill",
+}
+
+while true do
+    for _, treadmillName in ipairs(Treadmills) do
+        pcall(function()
+            AskTierRaise:InvokeServer(treadmillName)
+        end)
+
+        task.wait(10)
+    end
+end
