@@ -1,4 +1,4 @@
---FUSEV6
+--FUSEV7
 --==================================================
 -- AUTO FUSE PET
 --
@@ -1968,29 +1968,24 @@ end
 -- HIGHLIGHT
 --==================================================
 
-local function HasHighlight(
-    Egg
-)
+local function HasHighlight(Egg)
 
     if not Egg then
         return false
     end
 
-
     for _, Object in ipairs(
         Egg:GetDescendants()
     ) do
 
-        if Object:IsA(
-            "Highlight"
-        ) then
+        if Object:IsA("Highlight")
+            and Object.Name ~= "MonsterParasiteHighlight" then
 
             return true
 
         end
 
     end
-
 
     return false
 
@@ -4729,4 +4724,3 @@ task.spawn(function()
     end
 
 end)
-
