@@ -1,15 +1,18 @@
-
---FUSEV3
+--FUSEV5
 --==================================================
 -- AUTO FUSE PET
 -- -> FINISH REVEAL
--- -> WAIT FUSED EGG EQUIPPED
--- -> PLACE FUSED EGG
+-- -> CHECK EGG INVENTORY
+-- -> EQUIP EGG BY UID
+-- -> FLY PLOT
+-- -> PLACE EGG
 -- -> AUTO HATCH
 --
 -- JIKA TIDAK ADA 3 PET SIAP FUSE:
 -- -> CARI FIELD EGG
 -- -> CARRY
+-- -> CHECK INVENTORY
+-- -> EQUIP BY UID
 -- -> PLACE
 -- -> HATCH
 --
@@ -18,17 +21,33 @@
 --
 -- UPDATE:
 --
--- 1. HATCH HANYA SCAN 1X PER PROCESS
---    Misal ada 2 egg:
---    -> ambil snapshot 2 egg
---    -> hatch egg #1
---    -> hatch egg #2
---    -> SELESAI
---    -> TIDAK SCAN ULANG
+-- 1. PLACE EGG SEKARANG BERDASARKAN EggInventory
+-- 2. TIDAK LAGI MENGANDALKAN TOOL YANG KEBETULAN EQUIPPED
+-- 3. EggInventory:
+--      Placement == nil
+--      -> SORT AssetScale TERBESAR
+--      -> AMBIL UID
+--      -> AskWearTool(UID)
+--      -> WAIT TOOL
+--      -> PLACE
 --
--- 2. SETIAP MULAI KE START AREA UNTUK AMBIL
---    FIELD EGG:
---    -> SELALU AskDoff
+-- 4. FUSED EGG:
+--      SNAPSHOT INVENTORY SEBELUM FUSE
+--      -> FINISH REVEAL
+--      -> CARI UID BARU DI INVENTORY
+--      -> EQUIP
+--      -> PLACE
+--
+-- 5. FIELD EGG:
+--      CARRY
+--      -> CARI INVENTORY UID EGG
+--      -> EQUIP BY UID
+--      -> PLACE
+--
+-- 6. HATCH HANYA SCAN 1X PER PROCESS
+--
+-- 7. SETIAP MULAI AMBIL FIELD EGG:
+--      SELALU AskDoff
 --==================================================
 
 
@@ -36,11 +55,17 @@
 -- SERVICES
 --==================================================
 
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
+local Players =
+    game:GetService("Players")
 
-local LocalPlayer = Players.LocalPlayer
+local ReplicatedStorage =
+    game:GetService("ReplicatedStorage")
+
+local Workspace =
+    game:GetService("Workspace")
+
+local LocalPlayer =
+    Players.LocalPlayer
 
 
 --==================================================
@@ -51,6 +76,24 @@ local Networking =
     ReplicatedStorage
         :WaitForChild("Packages")
         :WaitForChild("Networking")
+
+
+--==================================================
+-- SAVE
+--==================================================
+
+local Shared =
+    ReplicatedStorage
+        :WaitForChild("Shared")
+
+local Save =
+    require(
+        Shared:WaitForChild("Save")
+    )
+
+print(
+    "[SAVE] Save module loaded"
+)
 
 
 --==================================================
@@ -66,6 +109,7 @@ local MAX_PET_WEIGHT = 1000000
 local FUSE_LOAD_DELAY = 1
 local FUSE_AFTER_BEGIN_DELAY = 3
 local FUSE_AFTER_REVEAL_DELAY = 1
+
 local FUSED_EGG_WAIT_TIMEOUT = 10
 
 
@@ -83,14 +127,27 @@ local FLY_MAX_TIME = 120
 -- FIELD EGG
 --==============================
 
-local START_AREA_NAME = "StartArea"
-local EGG_FOLDER_NAME = "AreaEggSlotsClient"
+local START_AREA_NAME =
+    "StartArea"
+
+local EGG_FOLDER_NAME =
+    "AreaEggSlotsClient"
 
 local AFTER_CARRY_START_DELAY = 0.2
 local CARRY_DELAY = 0
 
 local WAIT_AFTER_RETURN = 3
-local TOOL_CHECK_DELAY = 0.2
+
+local TOOL_CHECK_DELAY = 0.1
+
+
+--==============================
+-- INVENTORY EQUIP
+--==============================
+
+local EQUIP_TIMEOUT = 5
+
+local WAIT_AFTER_EQUIP = 0.5
 
 
 --==============================
@@ -100,7 +157,6 @@ local TOOL_CHECK_DELAY = 0.2
 local FIXED_Y = -0.5
 local MARGIN = 2
 
-local PLACE_RETRY_DELAY = 0.5
 local WAIT_TOOL_GONE = 5
 
 local MIN_PLOT = 1
@@ -122,8 +178,8 @@ local NORMAL_MIN_PIVOT_X = 2600
 local MAX_PROMPT_DISTANCE = 20
 local WALK_TO_EGG_DISTANCE = 4
 
-local HATCH_MAX_TIME = 2
-local HATCH_RESUME_TIME = 2
+local HATCH_MAX_TIME = 3
+local HATCH_RESUME_TIME = 1
 local PROMPT_CHECK_DELAY = 0.2
 
 
@@ -131,7 +187,9 @@ local PROMPT_CHECK_DELAY = 0.2
 -- TREADMILL
 --==============================
 
-local TREADMILL_NAME = "TreadmillBottom"
+local TREADMILL_NAME =
+    "TreadmillBottom"
+
 local TREADMILL_FLY_DISTANCE = 5
 
 
@@ -175,6 +233,11 @@ local FinishReveal =
 local CarryEggRemote =
     Networking:WaitForChild(
         "RF/EggWorld/AskFieldEggCarry"
+    )
+
+local EquipEggRemote =
+    Networking:WaitForChild(
+        "RF/EggWorld/AskWearTool"
     )
 
 local PlaceEggRemote =
@@ -265,8 +328,8 @@ end
 --==================================================
 -- EQUIPPED TOOL
 --
--- HANYA MEMBACA TOOL YANG SUDAH EQUIPPED
--- TIDAK PERNAH EQUIP TOOL
+-- HANYA UNTUK VALIDASI
+-- TIDAK DIGUNAKAN UNTUK MEMILIH EGG
 --==================================================
 
 local function GetEquippedTool()
@@ -295,29 +358,70 @@ local function GetEquippedTool()
 end
 
 
+--==================================================
+-- WAIT EQUIPPED TOOL
+--==================================================
+
 local function WaitForEquippedTool(
-    Timeout
+    Timeout,
+    ExpectedUID
 )
 
-    local StartTime = tick()
+    local StartTime =
+        tick()
 
-    while tick() - StartTime < Timeout do
+    while tick() - StartTime <
+        Timeout do
+
 
         local Tool =
             GetEquippedTool()
 
+
         if Tool then
+
+            local ToolUID =
+                Tool:GetAttribute("UID")
+
 
             print(
                 "[TOOL] EQUIPPED:",
-                Tool.Name,
-                "| UID:",
-                Tool:GetAttribute("UID")
+                Tool.Name
             )
 
-            return Tool
+            print(
+                "[TOOL] UID:",
+                ToolUID
+            )
+
+
+            if ExpectedUID then
+
+                if ToolUID
+                    and tostring(ToolUID)
+                        == tostring(ExpectedUID) then
+
+                    print(
+                        "[TOOL] UID VALID"
+                    )
+
+                    return Tool
+
+                end
+
+
+                warn(
+                    "[TOOL] UID BELUM SESUAI"
+                )
+
+            else
+
+                return Tool
+
+            end
 
         end
+
 
         task.wait(
             TOOL_CHECK_DELAY
@@ -325,7 +429,594 @@ local function WaitForEquippedTool(
 
     end
 
+
+    warn(
+        "[TOOL] EQUIP TIMEOUT"
+    )
+
+
     return nil
+
+end
+
+
+--==================================================
+-- INVENTORY
+--==================================================
+
+local function GetEggInventory()
+
+    local Success,
+        Data =
+        pcall(function()
+
+            return Save.Get()
+
+        end)
+
+
+    if not Success then
+
+        warn(
+            "[INVENTORY] Save.Get ERROR:",
+            Data
+        )
+
+        return nil
+
+    end
+
+
+    if typeof(Data) ~= "table" then
+
+        warn(
+            "[INVENTORY] Save.Get bukan table"
+        )
+
+        return nil
+
+    end
+
+
+    local EggInventory =
+        Data.EggInventory
+
+
+    if typeof(EggInventory) ~= "table" then
+
+        warn(
+            "[INVENTORY] EggInventory bukan table"
+        )
+
+        return nil
+
+    end
+
+
+    return EggInventory
+
+end
+
+
+--==================================================
+-- EGG SCALE
+--==================================================
+
+local function GetEggScale(
+    EggData
+)
+
+    if typeof(EggData) ~= "table" then
+        return -math.huge
+    end
+
+
+    local Scale =
+        EggData.AssetScale
+
+
+    if typeof(Scale) ~= "number" then
+
+        Scale =
+            EggData.Scale
+
+    end
+
+
+    if typeof(Scale) ~= "number" then
+
+        return -math.huge
+
+    end
+
+
+    return Scale
+
+end
+
+
+--==================================================
+-- FIND BEST INVENTORY EGG
+--
+-- Placement == nil
+-- SCALE TERBESAR
+--==================================================
+
+local function GetBestInventoryEgg()
+
+    local EggInventory =
+        GetEggInventory()
+
+
+    if not EggInventory then
+        return nil
+    end
+
+
+    local Eggs = {}
+
+
+    for UID, EggData in pairs(
+        EggInventory
+    ) do
+
+
+        if typeof(UID) == "string"
+            and typeof(EggData) == "table"
+            and EggData.Placement == nil then
+
+
+            local Scale =
+                GetEggScale(
+                    EggData
+                )
+
+
+            table.insert(
+                Eggs,
+                {
+                    UID = UID,
+                    Data = EggData,
+                    Scale = Scale,
+                }
+            )
+
+        end
+
+    end
+
+
+    if #Eggs == 0 then
+
+        print(
+            "[INVENTORY] TIDAK ADA EGG Placement=nil"
+        )
+
+        return nil
+
+    end
+
+
+    table.sort(
+        Eggs,
+        function(A, B)
+
+            if A.Scale == B.Scale then
+
+                return A.UID < B.UID
+
+            end
+
+            return A.Scale > B.Scale
+
+        end
+    )
+
+
+    local Best =
+        Eggs[1]
+
+
+    print(
+        "=========================================="
+    )
+
+    print(
+        "[INVENTORY] BEST EGG"
+    )
+
+    print(
+        "[INVENTORY] UID:",
+        Best.UID
+    )
+
+    print(
+        "[INVENTORY] SCALE:",
+        Best.Scale
+    )
+
+    print(
+        "[INVENTORY] CATEGORY:",
+        Best.Data.AssetCategory
+            or Best.Data.Category
+            or "nil"
+    )
+
+    print(
+        "[INVENTORY] PLACEMENT:",
+        Best.Data.Placement
+    )
+
+    print(
+        "=========================================="
+    )
+
+
+    return Best
+
+end
+
+
+--==================================================
+-- FIND INVENTORY EGG BY UID
+--==================================================
+
+local function GetInventoryEggByUID(
+    UID
+)
+
+    if not UID then
+        return nil
+    end
+
+
+    local EggInventory =
+        GetEggInventory()
+
+
+    if not EggInventory then
+        return nil
+    end
+
+
+    local EggData =
+        EggInventory[
+            tostring(UID)
+        ]
+
+
+    if typeof(EggData) ~= "table" then
+        return nil
+    end
+
+
+    if EggData.Placement ~= nil then
+        return nil
+    end
+
+
+    return {
+        UID = tostring(UID),
+        Data = EggData,
+        Scale = GetEggScale(EggData),
+    }
+
+end
+
+
+--==================================================
+-- SNAPSHOT INVENTORY UID
+--==================================================
+
+local function SnapshotEggInventory()
+
+    local Snapshot = {}
+
+
+    local EggInventory =
+        GetEggInventory()
+
+
+    if not EggInventory then
+        return Snapshot
+    end
+
+
+    for UID, EggData in pairs(
+        EggInventory
+    ) do
+
+        if typeof(UID) == "string"
+            and typeof(EggData) == "table"
+            and EggData.Placement == nil then
+
+            Snapshot[
+                UID
+            ] = true
+
+        end
+
+    end
+
+
+    print(
+        "[INVENTORY] SNAPSHOT:",
+        #({})
+    )
+
+
+    return Snapshot
+
+end
+
+
+--==================================================
+-- FIND NEW EGG AFTER FUSE
+--
+-- PRIORITY:
+-- 1. UID yang belum ada sebelum fuse
+-- 2. Placement == nil
+-- 3. SCALE TERBESAR
+--==================================================
+
+local function FindNewFusedEgg(
+    OldSnapshot,
+    Timeout
+)
+
+    local StartTime =
+        tick()
+
+
+    while tick() - StartTime <
+        Timeout do
+
+
+        local EggInventory =
+            GetEggInventory()
+
+
+        if EggInventory then
+
+            local Candidates = {}
+
+
+            for UID, EggData in pairs(
+                EggInventory
+            ) do
+
+
+                if typeof(UID) == "string"
+                    and typeof(EggData) == "table"
+                    and EggData.Placement == nil
+                    and not OldSnapshot[UID] then
+
+
+                    table.insert(
+                        Candidates,
+                        {
+                            UID = UID,
+                            Data = EggData,
+                            Scale = GetEggScale(EggData),
+                        }
+                    )
+
+                end
+
+            end
+
+
+            if #Candidates > 0 then
+
+                table.sort(
+                    Candidates,
+                    function(A, B)
+
+                        if A.Scale == B.Scale then
+                            return A.UID < B.UID
+                        end
+
+                        return A.Scale > B.Scale
+
+                    end
+                )
+
+
+                local Best =
+                    Candidates[1]
+
+
+                print(
+                    "=========================================="
+                )
+
+                print(
+                    "[FUSE] NEW EGG FOUND IN INVENTORY"
+                )
+
+                print(
+                    "[FUSE] UID:",
+                    Best.UID
+                )
+
+                print(
+                    "[FUSE] SCALE:",
+                    Best.Scale
+                )
+
+                print(
+                    "[FUSE] CATEGORY:",
+                    Best.Data.AssetCategory
+                        or Best.Data.Category
+                        or "nil"
+                )
+
+                print(
+                    "=========================================="
+                )
+
+
+                return Best
+
+            end
+
+        end
+
+
+        task.wait(
+            0.2
+        )
+
+    end
+
+
+    warn(
+        "[FUSE] NEW FUSED EGG TIDAK DITEMUKAN DI INVENTORY"
+    )
+
+
+    return nil
+
+end
+
+
+--==================================================
+-- EQUIP EGG BY UID
+--
+-- INI SEKARANG METODE UTAMA
+--==================================================
+
+local function EquipEggByUID(
+    UID
+)
+
+    if not UID then
+
+        warn(
+            "[EQUIP] UID NIL"
+        )
+
+        return nil
+
+    end
+
+
+    print(
+        "=========================================="
+    )
+
+    print(
+        "[EQUIP] ASK WEAR TOOL"
+    )
+
+    print(
+        "[EQUIP] UID:",
+        UID
+    )
+
+
+    local Success,
+        Result =
+        pcall(function()
+
+            return EquipEggRemote:
+                InvokeServer(
+                    tostring(UID)
+                )
+
+        end)
+
+
+    print(
+        "[EQUIP] SUCCESS:",
+        Success
+    )
+
+    print(
+        "[EQUIP] RESULT:",
+        Result
+    )
+
+
+    if not Success then
+
+        warn(
+            "[EQUIP] ERROR:",
+            Result
+        )
+
+        return nil
+
+    end
+
+
+    task.wait(
+        WAIT_AFTER_EQUIP
+    )
+
+
+    local Tool =
+        WaitForEquippedTool(
+            EQUIP_TIMEOUT,
+            UID
+        )
+
+
+    if not Tool then
+
+        warn(
+            "[EQUIP] TOOL UID TIDAK SESUAI:",
+            UID
+        )
+
+        return nil
+
+    end
+
+
+    print(
+        "[EQUIP] SUCCESS:",
+        Tool.Name,
+        "| UID:",
+        Tool:GetAttribute("UID")
+    )
+
+
+    return Tool
+
+end
+
+
+--==================================================
+-- EQUIP BEST INVENTORY EGG
+--==================================================
+
+local function EquipBestInventoryEgg()
+
+    local Egg =
+        GetBestInventoryEgg()
+
+
+    if not Egg then
+        return nil
+    end
+
+
+    local Tool =
+        EquipEggByUID(
+            Egg.UID
+        )
+
+
+    if not Tool then
+        return nil
+    end
+
+
+    return {
+        Inventory = Egg,
+        Tool = Tool,
+    }
 
 end
 
@@ -351,12 +1042,15 @@ local function AcquireMovementLock(
 
     end
 
+
     MovementOwner = Name
+
 
     print(
         "[FLY] LOCK:",
         Name
     )
+
 
     return true
 
@@ -386,6 +1080,7 @@ local function StopFly()
     local Root =
         GetRoot()
 
+
     if Root then
 
         Root.AssemblyLinearVelocity =
@@ -413,9 +1108,11 @@ local function AutoFlyToPosition(
         return false
     end
 
+
     Distance =
         Distance
         or REACH_DISTANCE
+
 
     LockName =
         LockName
@@ -467,8 +1164,11 @@ local function AutoFlyToPosition(
         Humanoid.AutoRotate
 
 
-    Humanoid.PlatformStand = true
-    Humanoid.AutoRotate = false
+    Humanoid.PlatformStand =
+        true
+
+    Humanoid.AutoRotate =
+        false
 
 
     local BG =
@@ -479,7 +1179,8 @@ local function AutoFlyToPosition(
     BG.Name =
         "AutoFuseEggGyro"
 
-    BG.P = 9e4
+    BG.P =
+        9e4
 
     BG.MaxTorque =
         Vector3.new(
@@ -563,6 +1264,7 @@ local function AutoFlyToPosition(
 
             Success = true
 
+
             print(
                 "[FLY] REACHED:",
                 LockName,
@@ -571,6 +1273,7 @@ local function AutoFlyToPosition(
                     CurrentDistance * 10
                 ) / 10
             )
+
 
             break
 
@@ -666,6 +1369,10 @@ local function AutoFlyToPosition(
 end
 
 
+--==================================================
+-- GET POSITION
+--==================================================
+
 local function GetPosition(
     Object
 )
@@ -715,7 +1422,9 @@ local function FlyToObject(
 
 
     local Position =
-        GetPosition(Object)
+        GetPosition(
+            Object
+        )
 
 
     if not Position then
@@ -741,7 +1450,7 @@ end
 
 
 --==================================================
--- FUSE:
+-- FUSE
 -- FIND 3 SAME PET
 --==================================================
 
@@ -762,6 +1471,7 @@ local function FindThreeSamePets()
     for _, Tool in ipairs(
         Backpack:GetChildren()
     ) do
+
 
         if Tool:IsA("Tool")
             and not BLACKLIST[Tool.Name] then
@@ -806,6 +1516,7 @@ local function FindThreeSamePets()
         Groups
     ) do
 
+
         if #Tools >= 3 then
 
             print(
@@ -821,10 +1532,6 @@ local function FindThreeSamePets()
                 Name
             )
 
-            print(
-                "=========================================="
-            )
-
 
             for i = 1, 3 do
 
@@ -833,13 +1540,9 @@ local function FindThreeSamePets()
                     "| NAME:",
                     Tools[i].Name,
                     "| WEIGHT:",
-                    Tools[i]:GetAttribute(
-                        "Weight"
-                    ),
+                    Tools[i]:GetAttribute("Weight"),
                     "| UID:",
-                    Tools[i]:GetAttribute(
-                        "UID"
-                    )
+                    Tools[i]:GetAttribute("UID")
                 )
 
             end
@@ -861,8 +1564,7 @@ end
 
 
 --==================================================
--- FUSE:
--- LOAD ONE PET
+-- LOAD PET
 --==================================================
 
 local function LoadOnePet(
@@ -906,10 +1608,6 @@ local function LoadOnePet(
         "[FUSE] LOAD PET #" .. Index,
         "| NAME:",
         Tool.Name,
-        "| WEIGHT:",
-        Tool:GetAttribute(
-            "Weight"
-        ),
         "| UID:",
         UID
     )
@@ -935,14 +1633,7 @@ local function LoadOnePet(
 
 
     if not Success then
-
-        warn(
-            "[FUSE] LoadPet ERROR:",
-            Result
-        )
-
         return false
-
     end
 
 
@@ -957,15 +1648,10 @@ end
 
 
 --==================================================
--- FUSE:
--- BEGIN
+-- BEGIN FUSE
 --==================================================
 
 local function StartFuse()
-
-    print(
-        "=========================================="
-    )
 
     print(
         "[FUSE] BEGIN FUSE"
@@ -1000,18 +1686,10 @@ end
 
 
 --==================================================
--- FUSE:
 -- FINISH REVEAL
 --==================================================
 
 local function FinishFuse()
-
-    print(
-        "[FUSE] WAIT:",
-        FUSE_AFTER_BEGIN_DELAY,
-        "SEC"
-    )
-
 
     task.wait(
         FUSE_AFTER_BEGIN_DELAY
@@ -1041,14 +1719,7 @@ local function FinishFuse()
 
 
     if not Success then
-
-        warn(
-            "[FUSE] FinishReveal ERROR:",
-            Result
-        )
-
         return false
-
     end
 
 
@@ -1058,73 +1729,6 @@ local function FinishFuse()
 
 
     return true
-
-end
-
-
---==================================================
--- WAIT FUSED EGG
---
--- HANYA MENUNGGU TOOL YANG OTOMATIS EQUIPPED
--- TIDAK SCAN BACKPACK
--- TIDAK EQUIP TOOL
---==================================================
-
-local function WaitForFusedEggEquipped(
-    Timeout
-)
-
-    print(
-        "=========================================="
-    )
-
-    print(
-        "[FUSE] WAIT FUSED EGG EQUIPPED"
-    )
-
-
-    local StartTime =
-        tick()
-
-
-    while tick() - StartTime <
-        Timeout do
-
-
-        local Tool =
-            GetEquippedTool()
-
-
-        if Tool then
-
-            print(
-                "[FUSE] FUSED RESULT EQUIPPED:",
-                Tool.Name,
-                "| UID:",
-                Tool:GetAttribute(
-                    "UID"
-                )
-            )
-
-
-            return Tool
-
-        end
-
-
-        task.wait(
-            0.1
-        )
-
-    end
-
-
-    warn(
-        "[FUSE] FUSED EGG TIDAK MUNCUL EQUIPPED"
-    )
-
-
-    return nil
 
 end
 
@@ -1142,13 +1746,7 @@ local function GetMyPlot()
 
 
     if not Plots then
-
-        warn(
-            "[PLOT] workspace.Plots tidak ditemukan"
-        )
-
         return nil
-
     end
 
 
@@ -1256,21 +1854,11 @@ local function GetPlotArea(
 
 
             if not Name:find("sign")
-                and not Name:find(
-                    "playername"
-                )
-                and not Name:find(
-                    "deco"
-                )
-                and not Name:find(
-                    "border"
-                )
-                and not Name:find(
-                    "wall"
-                )
-                and not Name:find(
-                    "fence"
-                ) then
+                and not Name:find("playername")
+                and not Name:find("deco")
+                and not Name:find("border")
+                and not Name:find("wall")
+                and not Name:find("fence") then
 
 
                 local Area =
@@ -1300,9 +1888,7 @@ local function GetPlotArea(
 
         print(
             "[PLACE] AREA:",
-            BiggestPart:GetFullName(),
-            "| SIZE:",
-            BiggestPart.Size
+            BiggestPart:GetFullName()
         )
 
     end
@@ -1338,7 +1924,6 @@ local function GetRandomPosition(
         -Size.X / 2
         + MARGIN
 
-
     local MaxX =
         Size.X / 2
         - MARGIN
@@ -1348,10 +1933,25 @@ local function GetRandomPosition(
         -Size.Z / 2
         + MARGIN
 
-
     local MaxZ =
         Size.Z / 2
         - MARGIN
+
+
+    if MinX > MaxX then
+
+        MinX = 0
+        MaxX = 0
+
+    end
+
+
+    if MinZ > MaxZ then
+
+        MinZ = 0
+        MaxZ = 0
+
+    end
 
 
     local LocalX =
@@ -1388,39 +1988,30 @@ local function GetRandomPosition(
         )
 
 
-    local Result =
-        Vector3.new(
-            PlotLocalPosition.X,
-            FIXED_Y,
-            PlotLocalPosition.Z
-        )
-
-
-    print(
-        "[PLACE] RANDOM LOCAL:",
-        Result
+    return Vector3.new(
+        PlotLocalPosition.X,
+        FIXED_Y,
+        PlotLocalPosition.Z
     )
-
-
-    return Result
 
 end
 
 
 --==================================================
 -- PLACE EGG
+--
+-- SEKARANG UID BERASAL DARI INVENTORY
 --==================================================
 
-local function PlaceEggOnce(
-    Tool,
+local function PlaceEggByUID(
+    UID,
     Plot
 )
 
-    if not Tool
-        or not Tool.Parent then
+    if not UID then
 
         warn(
-            "[PLACE] TOOL INVALID"
+            "[PLACE] UID NIL"
         )
 
         return false
@@ -1428,18 +2019,22 @@ local function PlaceEggOnce(
     end
 
 
-    local UID =
-        Tool:GetAttribute(
-            "UID"
+    if not Plot then
+        return false
+    end
+
+
+    local InventoryEgg =
+        GetInventoryEggByUID(
+            UID
         )
 
 
-    if typeof(UID) ~= "string"
-        or UID == "" then
+    if not InventoryEgg then
 
         warn(
-            "[PLACE] UID TIDAK DITEMUKAN:",
-            Tool.Name
+            "[PLACE] UID TIDAK ADA DI INVENTORY / SUDAH PLACED:",
+            UID
         )
 
         return false
@@ -1489,8 +2084,7 @@ local function PlaceEggOnce(
     )
 
     print(
-        "[PLACE] PLACE TOOL:",
-        Tool.Name
+        "[PLACE] PLACE BY INVENTORY"
     )
 
     print(
@@ -1499,8 +2093,13 @@ local function PlaceEggOnce(
     )
 
     print(
-        "[PLACE] LOCAL CF:",
-        LocalCFrame
+        "[PLACE] SCALE:",
+        InventoryEgg.Scale
+    )
+
+    print(
+        "[PLACE] LOCAL POSITION:",
+        RandomPosition
     )
 
 
@@ -1511,7 +2110,8 @@ local function PlaceEggOnce(
             return PlaceEggRemote:
                 InvokeServer({
 
-                    ["Uid"] = UID,
+                    ["Uid"] =
+                        tostring(UID),
 
                     ["LocalCFrame"] =
                         LocalCFrame,
@@ -1522,8 +2122,12 @@ local function PlaceEggOnce(
 
 
     print(
+        "[PLACE] SUCCESS:",
+        Success
+    )
+
+    print(
         "[PLACE] RESULT:",
-        Success,
         Result
     )
 
@@ -1619,23 +2223,62 @@ end
 
 
 --==================================================
--- PLACE FUSED EGG
+-- VERIFY INVENTORY PLACEMENT
 --==================================================
 
-local function PlaceFusedEgg(
-    FusedEgg
+local function IsEggStillAvailable(
+    UID
 )
 
-    if not FusedEgg
-        or not FusedEgg.Parent then
+    local EggInventory =
+        GetEggInventory()
 
-        warn(
-            "[FUSE PLACE] FUSED EGG INVALID"
-        )
 
+    if not EggInventory then
         return false
-
     end
+
+
+    local EggData =
+        EggInventory[
+            tostring(UID)
+        ]
+
+
+    if typeof(EggData) ~= "table" then
+        return false
+    end
+
+
+    return EggData.Placement == nil
+
+end
+
+
+--==================================================
+-- PLACE INVENTORY EGG
+--
+-- FLOW:
+--
+-- FIND INVENTORY
+-- -> EQUIP BY UID
+-- -> FIND PLOT
+-- -> FLY
+-- -> VALIDATE TOOL
+-- -> PLACE BY UID
+--==================================================
+
+local function ProcessInventoryEgg(
+    EggInfo
+)
+
+    if not EggInfo then
+        return false
+    end
+
+
+    local UID =
+        EggInfo.UID
 
 
     print(
@@ -1643,21 +2286,40 @@ local function PlaceFusedEgg(
     )
 
     print(
-        "[FUSE PLACE] START"
+        "[INVENTORY PLACE] START"
     )
 
     print(
-        "[FUSE PLACE] TOOL:",
-        FusedEgg.Name
+        "[INVENTORY PLACE] UID:",
+        UID
     )
 
-    print(
-        "[FUSE PLACE] UID:",
-        FusedEgg:GetAttribute(
-            "UID"
+
+    --==============================================
+    -- EQUIP
+    --==============================================
+
+    local Tool =
+        EquipEggByUID(
+            UID
         )
-    )
 
+
+    if not Tool then
+
+        warn(
+            "[INVENTORY PLACE] GAGAL EQUIP:",
+            UID
+        )
+
+        return false
+
+    end
+
+
+    --==============================================
+    -- GET PLOT
+    --==============================================
 
     local Plot =
         GetMyPlot()
@@ -1669,31 +2331,13 @@ local function PlaceFusedEgg(
 
 
     --==============================================
-    -- EXIT TREADMILL JIKA SEDANG MASUK
-    --==============================================
-
-    if TreadmillRunning then
-
-        print(
-            "[FUSE PLACE] EXIT TREADMILL"
-        )
-
-
-        if not ExitTreadmill() then
-            return false
-        end
-
-    end
-
-
-    --==============================================
-    -- FLY OWN PLOT
+    -- FLY PLOT
     --==============================================
 
     if not FlyToObject(
         Plot,
         REACH_DISTANCE,
-        "FUSE:OWN_PLOT"
+        "PLACE:OWN_PLOT"
     ) then
 
         return false
@@ -1701,18 +2345,23 @@ local function PlaceFusedEgg(
     end
 
 
+    task.wait(
+        0.2
+    )
+
+
     --==============================================
-    -- TOOL CHECK
+    -- VALIDATE EQUIPPED TOOL
     --==============================================
 
-    local CurrentTool =
+    Tool =
         GetEquippedTool()
 
 
-    if not CurrentTool then
+    if not Tool then
 
         warn(
-            "[FUSE PLACE] FUSED TOOL SUDAH TIDAK EQUIPPED"
+            "[INVENTORY PLACE] TOOL HILANG"
         )
 
         return false
@@ -1720,20 +2369,29 @@ local function PlaceFusedEgg(
     end
 
 
-    if CurrentTool ~= FusedEgg then
+    local ToolUID =
+        Tool:GetAttribute(
+            "UID"
+        )
+
+
+    print(
+        "[INVENTORY PLACE] CURRENT TOOL:",
+        Tool.Name
+    )
+
+    print(
+        "[INVENTORY PLACE] CURRENT UID:",
+        ToolUID
+    )
+
+
+    if not ToolUID
+        or tostring(ToolUID)
+            ~= tostring(UID) then
 
         warn(
-            "[FUSE PLACE] TOOL BERUBAH!"
-        )
-
-        print(
-            "[FUSE PLACE] EXPECTED:",
-            FusedEgg.Name
-        )
-
-        print(
-            "[FUSE PLACE] CURRENT:",
-            CurrentTool.Name
+            "[INVENTORY PLACE] UID TOOL TIDAK SESUAI"
         )
 
         return false
@@ -1745,17 +2403,13 @@ local function PlaceFusedEgg(
     -- PLACE
     --==============================================
 
-    local Placed =
-        PlaceEggOnce(
-            CurrentTool,
-            Plot
-        )
-
-
-    if not Placed then
+    if not PlaceEggByUID(
+        UID,
+        Plot
+    ) then
 
         warn(
-            "[FUSE PLACE] PLACE FAILED"
+            "[INVENTORY PLACE] PLACE FAILED"
         )
 
         return false
@@ -1767,14 +2421,38 @@ local function PlaceFusedEgg(
     -- WAIT TOOL GONE
     --==============================================
 
+    task.wait(
+        0.5
+    )
+
+
     WaitToolGone(
-        CurrentTool,
+        Tool,
         WAIT_TOOL_GONE
     )
 
 
+    --==============================================
+    -- VERIFY INVENTORY
+    --==============================================
+
+    if IsEggStillAvailable(
+        UID
+    ) then
+
+        warn(
+            "[INVENTORY PLACE] EGG MASIH ADA:",
+            UID
+        )
+
+        return false
+
+    end
+
+
     print(
-        "[FUSE PLACE] SUCCESS"
+        "[INVENTORY PLACE] SUCCESS:",
+        UID
     )
 
 
@@ -1784,10 +2462,61 @@ end
 
 
 --==================================================
--- EGG SCAN
+-- PLACE FUSED EGG
+--
+-- TIDAK MENGGUNAKAN TOOL OTOMATIS DARI FUSE
+--
+-- SEKARANG:
+-- SNAPSHOT
+-- -> FINISH REVEAL
+-- -> FIND NEW INVENTORY EGG
+-- -> EQUIP UID
+-- -> PLACE
 --==================================================
 
-local function GetEggScale(
+local function PlaceFusedEggFromInventory(
+    OldSnapshot
+)
+
+    print(
+        "=========================================="
+    )
+
+    print(
+        "[FUSE PLACE] FIND FUSED EGG IN INVENTORY"
+    )
+
+
+    local FusedEgg =
+        FindNewFusedEgg(
+            OldSnapshot,
+            FUSED_EGG_WAIT_TIMEOUT
+        )
+
+
+    if not FusedEgg then
+
+        warn(
+            "[FUSE PLACE] FUSED EGG TIDAK DITEMUKAN"
+        )
+
+        return false
+
+    end
+
+
+    return ProcessInventoryEgg(
+        FusedEgg
+    )
+
+end
+
+
+--==================================================
+-- EGG FIELD SCAN
+--==================================================
+
+local function GetEggScaleWorld(
     Egg
 )
 
@@ -1886,15 +2615,6 @@ end
 
 --==================================================
 -- GET BEST FIELD EGG
---
--- PRIORITY:
--- 1. HIGHLIGHT
--- 2. SCALE TERBESAR
--- 3. PIVOT X TERBESAR
---
--- NORMAL:
--- 1. SCALE TERBESAR
--- 2. PIVOT X TERBESAR
 --==================================================
 
 local function GetBestEgg()
@@ -1943,7 +2663,7 @@ local function GetBestEgg()
 
 
             local Scale =
-                GetEggScale(
+                GetEggScaleWorld(
                     Object
                 )
 
@@ -1964,20 +2684,23 @@ local function GetBestEgg()
 
 
                 if Scale >
+                    BestHighlightScale then
+
+                    BestHighlight =
+                        Object
+
+                    BestHighlightScale =
+                        Scale
+
+                    BestHighlightPivotX =
+                        PivotX
+
+
+                elseif Scale ==
                     BestHighlightScale
 
-                    or (
-
-                        Scale ==
-                            BestHighlightScale
-
-                        and
-
-                        PivotX >
-                            BestHighlightPivotX
-
-                    ) then
-
+                    and PivotX >
+                        BestHighlightPivotX then
 
                     BestHighlight =
                         Object
@@ -1999,20 +2722,23 @@ local function GetBestEgg()
 
 
                 if Scale >
+                    BestNormalScale then
+
+                    BestNormal =
+                        Object
+
+                    BestNormalScale =
+                        Scale
+
+                    BestNormalPivotX =
+                        PivotX
+
+
+                elseif Scale ==
                     BestNormalScale
 
-                    or (
-
-                        Scale ==
-                            BestNormalScale
-
-                        and
-
-                        PivotX >
-                            BestNormalPivotX
-
-                    ) then
-
+                    and PivotX >
+                        BestNormalPivotX then
 
                     BestNormal =
                         Object
@@ -2035,21 +2761,11 @@ local function GetBestEgg()
     if BestHighlight then
 
         print(
-            "=========================================="
-        )
-
-        print(
             "[AUTO EGG] BEST HIGHLIGHT:",
-            BestHighlight.Name
-        )
-
-        print(
-            "[AUTO EGG] SCALE:",
-            BestHighlightScale
-        )
-
-        print(
-            "[AUTO EGG] PIVOT X:",
+            BestHighlight.Name,
+            "| SCALE:",
+            BestHighlightScale,
+            "| X:",
             BestHighlightPivotX
         )
 
@@ -2061,27 +2777,22 @@ local function GetBestEgg()
     if BestNormal then
 
         print(
-            "=========================================="
-        )
-
-        print(
             "[AUTO EGG] BEST NORMAL:",
-            BestNormal.Name
-        )
-
-        print(
-            "[AUTO EGG] SCALE:",
-            BestNormalScale
-        )
-
-        print(
-            "[AUTO EGG] PIVOT X:",
+            BestNormal.Name,
+            "| SCALE:",
+            BestNormalScale,
+            "| X:",
             BestNormalPivotX
         )
 
         return BestNormal
 
     end
+
+
+    print(
+        "[AUTO EGG] NO VALID FIELD EGG"
+    )
 
 
     return nil
@@ -2111,11 +2822,6 @@ local function CarryEgg(
 
     print(
         "[AUTO EGG] CARRY:",
-        Egg.Name
-    )
-
-    print(
-        "[AUTO EGG] UID:",
         UID
     )
 
@@ -2127,7 +2833,8 @@ local function CarryEgg(
             return CarryEggRemote:
                 InvokeServer({
 
-                    ["Uid"] = UID
+                    ["Uid"] =
+                        UID
 
                 })
 
@@ -2177,11 +2884,6 @@ local function FindMonsterParasiteVisual()
 
         if Object.Name ==
             "MonsterParasiteVisual" then
-
-            print(
-                "[PARASITE] FOUND:",
-                Object:GetFullName()
-            )
 
             return Object
 
@@ -2239,23 +2941,12 @@ local function CheckAndFeedParasite()
     end
 
 
-    print(
-        "[PARASITE] DETECTED"
-    )
-
-
     local Monster =
         FindMonsterParasiteMonster()
 
 
     if not Monster then
-
-        warn(
-            "[PARASITE] MONSTER TIDAK DITEMUKAN"
-        )
-
         return true
-
     end
 
 
@@ -2337,7 +3028,6 @@ local function GetActiveRenders()
 
             and
             #Object:GetChildren() > 0 then
-
 
             table.insert(
                 Renders,
@@ -2521,12 +3211,6 @@ local function TriggerNearbyPrompts()
                         ] = true
 
 
-                        print(
-                            "[HATCH] TRIGGER:",
-                            Prompt:GetFullName()
-                        )
-
-
                         pcall(function()
 
                             fireproximityprompt(
@@ -2566,19 +3250,10 @@ local function HatchOneEgg(
     if not Egg
         or not Egg.Parent then
 
-        warn(
-            "[HATCH] EGG SUDAH TIDAK ADA:",
-            Egg and Egg.Name or "nil"
-        )
-
         return false
 
     end
 
-
-    print(
-        "=========================================="
-    )
 
     print(
         "[HATCH] START:",
@@ -2593,13 +3268,7 @@ local function HatchOneEgg(
 
 
     if not Position then
-
-        warn(
-            "[HATCH] POSITION TIDAK DITEMUKAN"
-        )
-
         return false
-
     end
 
 
@@ -2612,14 +3281,7 @@ local function HatchOneEgg(
 
 
     if not Reached then
-
-        warn(
-            "[HATCH] GAGAL MENUJU EGG:",
-            Egg.Name
-        )
-
         return false
-
     end
 
 
@@ -2668,44 +3330,15 @@ end
 
 
 --==================================================
--- HATCH ALL OWN EGGS
+-- HATCH ALL
 --
--- IMPORTANT:
---
--- DI SINI HANYA SCAN 1X.
---
--- Contoh:
---
--- Saat fungsi dipanggil:
--- Egg #1
--- Egg #2
---
--- Snapshot = {Egg1, Egg2}
---
--- Kemudian:
--- Hatch Egg1
--- Hatch Egg2
---
--- Setelah itu SELESAI.
---
--- TIDAK ADA:
--- while true
--- GetMyPlacedEggs()
---
--- Jadi egg baru yang muncul ketika proses
--- hatch berlangsung TIDAK ikut di-loop ini.
+-- SCAN 1X
 --==================================================
 
 local function HatchAllPlacedEggs()
 
     if HatchRunning then
-
-        print(
-            "[HATCH] ALREADY RUNNING"
-        )
-
         return
-
     end
 
 
@@ -2717,10 +3350,6 @@ local function HatchAllPlacedEggs()
         xpcall(function()
 
 
-            --======================================
-            -- SCAN HANYA 1X
-            --======================================
-
             local Eggs =
                 GetMyPlacedEggs()
 
@@ -2730,50 +3359,20 @@ local function HatchAllPlacedEggs()
 
 
             print(
-                "=========================================="
-            )
-
-            print(
-                "[HATCH] SNAPSHOT TOTAL:",
+                "[HATCH] SNAPSHOT:",
                 EggCount
             )
 
-            print(
-                "[HATCH] SCAN HANYA 1X"
-            )
-
-            print(
-                "=========================================="
-            )
-
-
-            --======================================
-            -- TIDAK ADA EGG
-            --======================================
 
             if EggCount == 0 then
-
-                print(
-                    "[HATCH] NO OWN EGG"
-                )
-
                 return
-
             end
 
-
-            --======================================
-            -- HATCH SESUAI SNAPSHOT
-            --======================================
 
             for Index, Egg in ipairs(
                 Eggs
             ) do
 
-
-                print(
-                    "=========================================="
-                )
 
                 print(
                     "[HATCH] PROCESS:",
@@ -2782,13 +3381,7 @@ local function HatchAllPlacedEggs()
                     EggCount
                 )
 
-                print(
-                    "[HATCH] EGG:",
-                    Egg.Name
-                )
 
-
-                -- Kalau egg masih ada -> hatch
                 if Egg
                     and Egg.Parent then
 
@@ -2796,17 +3389,9 @@ local function HatchAllPlacedEggs()
                         Egg
                     )
 
-                else
-
-                    warn(
-                        "[HATCH] EGG SUDAH HILANG:",
-                        Egg and Egg.Name or "nil"
-                    )
-
                 end
 
 
-                -- Delay antar egg
                 if Index < EggCount then
 
                     task.wait(
@@ -2818,29 +3403,8 @@ local function HatchAllPlacedEggs()
             end
 
 
-            --======================================
-            -- SELESAI
-            --======================================
-
             print(
-                "=========================================="
-            )
-
-            print(
-                "[HATCH] SNAPSHOT HATCH COMPLETE"
-            )
-
-            print(
-                "[HATCH] TOTAL YANG DIPROSES:",
-                EggCount
-            )
-
-            print(
-                "[HATCH] TIDAK SCAN ULANG"
-            )
-
-            print(
-                "=========================================="
+                "[HATCH] SNAPSHOT COMPLETE"
             )
 
 
@@ -2854,6 +3418,7 @@ local function HatchAllPlacedEggs()
             "[HATCH] ERROR:",
             Error
         )
+
 
         StopFly()
 
@@ -2882,24 +3447,10 @@ local function GetMyTreadmill()
     end
 
 
-    local Treadmill =
-        Plot:FindFirstChild(
-            TREADMILL_NAME,
-            true
-        )
-
-
-    if Treadmill then
-
-        print(
-            "[TREADMILL] FOUND:",
-            Treadmill:GetFullName()
-        )
-
-    end
-
-
-    return Treadmill
+    return Plot:FindFirstChild(
+        TREADMILL_NAME,
+        true
+    )
 
 end
 
@@ -2926,15 +3477,6 @@ local function EnterTreadmill()
     end
 
 
-    print(
-        "=========================================="
-    )
-
-    print(
-        "[TREADMILL] NO FUSE + NO FIELD EGG"
-    )
-
-
     local Reached =
         FlyToObject(
             Treadmill,
@@ -2944,13 +3486,7 @@ local function EnterTreadmill()
 
 
     if not Reached then
-
-        warn(
-            "[TREADMILL] GAGAL MENUJU TREADMILL"
-        )
-
         return false
-
     end
 
 
@@ -2979,10 +3515,6 @@ local function EnterTreadmill()
     if Success then
 
         TreadmillRunning = true
-
-        print(
-            "[TREADMILL] ENTERED"
-        )
 
         return true
 
@@ -3044,25 +3576,10 @@ end
 
 
 --==================================================
--- FORCE DOFF BEFORE GOING TO START
---
--- INI KHUSUS REQUEST BARU:
---
--- Setiap kali mulai proses mengambil Field Egg
--- dan akan menuju StartArea:
---
--- RF/Treadmill/AskDoff:InvokeServer()
---
--- SELALU dijalankan.
---
--- Tidak bergantung pada TreadmillRunning.
+-- FORCE DOFF BEFORE START
 --==================================================
 
 local function ForceDoffBeforeStart()
-
-    print(
-        "=========================================="
-    )
 
     print(
         "[FIELD EGG] FORCE DOFF BEFORE START"
@@ -3086,8 +3603,6 @@ local function ForceDoffBeforeStart()
     )
 
 
-    -- Karena kita baru saja memaksa DOFF,
-    -- state lokal dianggap sudah keluar treadmill.
     TreadmillRunning = false
 
 
@@ -3151,11 +3666,6 @@ local function TryFuseCycle()
 
     if TreadmillRunning then
 
-        print(
-            "[FUSE] PET READY -> EXIT TREADMILL"
-        )
-
-
         if not ExitTreadmill() then
             return false
         end
@@ -3164,44 +3674,41 @@ local function TryFuseCycle()
 
 
     --==============================================
-    -- LOAD PET #1
+    -- SNAPSHOT INVENTORY
+    --
+    -- PENTING:
+    -- supaya hasil fuse tidak mengambil egg lama
+    --==============================================
+
+    local OldEggSnapshot =
+        SnapshotEggInventory()
+
+
+    --==============================================
+    -- LOAD PET
     --==============================================
 
     if not LoadOnePet(
         Pet1,
         1
     ) then
-
         return false
-
     end
 
-
-    --==============================================
-    -- LOAD PET #2
-    --==============================================
 
     if not LoadOnePet(
         Pet2,
         2
     ) then
-
         return false
-
     end
 
-
-    --==============================================
-    -- LOAD PET #3
-    --==============================================
 
     if not LoadOnePet(
         Pet3,
         3
     ) then
-
         return false
-
     end
 
 
@@ -3215,7 +3722,7 @@ local function TryFuseCycle()
 
 
     --==============================================
-    -- FINISH REVEAL
+    -- FINISH
     --==============================================
 
     if not FinishFuse() then
@@ -3224,26 +3731,11 @@ local function TryFuseCycle()
 
 
     --==============================================
-    -- WAIT FUSED EGG EQUIPPED
+    -- FIND FUSED EGG IN INVENTORY
     --==============================================
 
-    local FusedEgg =
-        WaitForFusedEggEquipped(
-            FUSED_EGG_WAIT_TIMEOUT
-        )
-
-
-    if not FusedEgg then
-        return false
-    end
-
-
-    --==============================================
-    -- PLACE FUSED EGG
-    --==============================================
-
-    if not PlaceFusedEgg(
-        FusedEgg
+    if not PlaceFusedEggFromInventory(
+        OldEggSnapshot
     ) then
 
         warn(
@@ -3257,8 +3749,6 @@ local function TryFuseCycle()
 
     --==============================================
     -- HATCH
-    --
-    -- Hanya hatch snapshot yang ada saat ini.
     --==============================================
 
     HatchAllPlacedEggs()
@@ -3270,15 +3760,7 @@ local function TryFuseCycle()
 
 
     print(
-        "=========================================="
-    )
-
-    print(
         "[FUSE] CYCLE COMPLETE"
-    )
-
-    print(
-        "=========================================="
     )
 
 
@@ -3315,19 +3797,10 @@ local function ProcessFieldEgg(
 
     --==============================================
     -- FORCE DOFF
-    --
-    -- SETIAP MULAI KE START
-    -- SELALU DOFF TERLEBIH DAHULU
     --==============================================
 
     if not ForceDoffBeforeStart() then
-
-        warn(
-            "[FIELD EGG] FORCE DOFF FAILED"
-        )
-
         return false
-
     end
 
 
@@ -3392,13 +3865,7 @@ local function ProcessFieldEgg(
     --==============================================
 
     if not Egg.Parent then
-
-        warn(
-            "[FIELD EGG] EGG SUDAH HILANG"
-        )
-
         return false
-
     end
 
 
@@ -3424,6 +3891,10 @@ local function ProcessFieldEgg(
     task.wait(
         AFTER_CARRY_START_DELAY
     )
+
+
+    local FieldUID =
+        Egg.Name
 
 
     if not CarryEgg(
@@ -3460,34 +3931,56 @@ local function ProcessFieldEgg(
 
 
     --==============================================
-    -- WAIT
+    -- WAIT INVENTORY UPDATE
     --==============================================
 
     print(
-        "[FIELD EGG] WAIT:",
-        WAIT_AFTER_RETURN
+        "[FIELD EGG] WAIT INVENTORY:",
+        FieldUID
     )
 
 
-    task.wait(
-        WAIT_AFTER_RETURN
-    )
+    local StartInventoryWait =
+        tick()
 
 
-    --==============================================
-    -- WAIT TOOL
-    --==============================================
+    local InventoryEgg = nil
 
-    local Tool =
-        WaitForEquippedTool(
-            5
+
+    while tick() - StartInventoryWait <
+        EQUIP_TIMEOUT do
+
+
+        InventoryEgg =
+            GetInventoryEggByUID(
+                FieldUID
+            )
+
+
+        if InventoryEgg then
+
+            print(
+                "[FIELD EGG] FOUND IN INVENTORY:",
+                FieldUID
+            )
+
+            break
+
+        end
+
+
+        task.wait(
+            0.2
         )
 
+    end
 
-    if not Tool then
+
+    if not InventoryEgg then
 
         warn(
-            "[FIELD EGG] CARRIED EGG TOOL TIDAK EQUIPPED"
+            "[FIELD EGG] UID TIDAK MASUK INVENTORY:",
+            FieldUID
         )
 
         return false
@@ -3495,10 +3988,25 @@ local function ProcessFieldEgg(
     end
 
 
-    print(
-        "[FIELD EGG] CARRIED TOOL:",
-        Tool.Name
-    )
+    --==============================================
+    -- EQUIP BY INVENTORY UID
+    --==============================================
+
+    local Tool =
+        EquipEggByUID(
+            InventoryEgg.UID
+        )
+
+
+    if not Tool then
+
+        warn(
+            "[FIELD EGG] GAGAL EQUIP INVENTORY EGG"
+        )
+
+        return false
+
+    end
 
 
     --==============================================
@@ -3545,14 +4053,14 @@ local function ProcessFieldEgg(
 
 
     --==============================================
-    -- CHECK TOOL AGAIN
+    -- CHECK TOOL
     --==============================================
 
-    local CurrentTool =
+    Tool =
         GetEquippedTool()
 
 
-    if not CurrentTool then
+    if not Tool then
 
         warn(
             "[FIELD EGG] TOOL HILANG"
@@ -3563,17 +4071,31 @@ local function ProcessFieldEgg(
     end
 
 
-    --==============================================
-    -- PARASITE RECHECK
-    --==============================================
-
-    if CheckAndFeedParasite() then
-
-        print(
-            "[FIELD EGG] PARASITE -> PLACE CANCEL"
+    local EquippedUID =
+        Tool:GetAttribute(
+            "UID"
         )
 
-        return true
+
+    if not EquippedUID
+        or tostring(EquippedUID)
+            ~= tostring(FieldUID) then
+
+        warn(
+            "[FIELD EGG] TOOL UID TIDAK SESUAI"
+        )
+
+        print(
+            "EXPECTED:",
+            FieldUID
+        )
+
+        print(
+            "CURRENT:",
+            EquippedUID
+        )
+
+        return false
 
     end
 
@@ -3582,8 +4104,8 @@ local function ProcessFieldEgg(
     -- PLACE
     --==============================================
 
-    if not PlaceEggOnce(
-        CurrentTool,
+    if not PlaceEggByUID(
+        FieldUID,
         Plot
     ) then
 
@@ -3601,15 +4123,13 @@ local function ProcessFieldEgg(
     --==============================================
 
     WaitToolGone(
-        CurrentTool,
+        Tool,
         WAIT_TOOL_GONE
     )
 
 
     --==============================================
-    -- HATCH
-    --
-    -- SCAN 1X SAJA
+    -- HATCH SNAPSHOT
     --==============================================
 
     HatchAllPlacedEggs()
@@ -3642,7 +4162,7 @@ task.spawn(function()
     )
 
     print(
-        " AUTO FUSE PET"
+        " AUTO FUSE PET V5"
     )
 
     print(
@@ -3658,11 +4178,15 @@ task.spawn(function()
     )
 
     print(
-        " FUSED EGG = AUTO EQUIPPED"
+        " FUSED EGG -> INVENTORY"
     )
 
     print(
-        " FUSED EGG -> DIRECT PLACE"
+        " INVENTORY -> EQUIP BY UID"
+    )
+
+    print(
+        " EQUIP -> FLY -> PLACE"
     )
 
     print(
@@ -3670,7 +4194,7 @@ task.spawn(function()
     )
 
     print(
-        " AUTO HATCH SNAPSHOT MODE"
+        " AUTO HATCH SNAPSHOT"
     )
 
     print(
@@ -3727,8 +4251,6 @@ task.spawn(function()
 
     print(
         "=========================================="
-
-
     )
 
 
@@ -3756,15 +4278,13 @@ task.spawn(function()
 
 
                     if FuseResult then
-
                         return
-
                     end
 
 
                     --==================================
-                    -- NO FUSE
-                    -- -> CHECK FIELD EGG
+                    -- PRIORITY #2
+                    -- FIELD EGG
                     --==================================
 
                     print(
@@ -3784,20 +4304,11 @@ task.spawn(function()
                         GetBestEgg()
 
 
-                    --==================================
-                    -- FIELD EGG FOUND
-                    --==================================
-
                     if Egg then
 
                         print(
                             "[MAIN] FIELD EGG FOUND"
                         )
-
-                        print(
-                            "[MAIN] -> PROCESS FIELD EGG"
-                        )
-
 
                         ProcessFieldEgg(
                             Egg
@@ -3808,8 +4319,8 @@ task.spawn(function()
 
 
                         --================================
-                        -- NO FIELD EGG
-                        -- -> TREADMILL
+                        -- PRIORITY #3
+                        -- TREADMILL
                         --================================
 
                         print(
@@ -3862,8 +4373,6 @@ task.spawn(function()
             LOOP_DELAY
         )
 
-
     end
 
 end)
-
