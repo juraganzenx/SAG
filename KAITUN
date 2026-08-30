@@ -139,7 +139,7 @@ local MAX_PLOT = 8
 -- NORMAL FIELD EGG FILTER
 --==============================
 
-local NORMAL_MIN_SCALE = 1
+local NORMAL_MIN_SCALE = 13
 local NORMAL_MIN_PIVOT_X = 2600
 
 
