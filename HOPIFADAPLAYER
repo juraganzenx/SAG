@@ -1,0 +1,43 @@
+--==================================================
+-- AUTO SERVER HOP IF TARGET USER FOUND
+--==================================================
+
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+
+local LocalPlayer = Players.LocalPlayer
+
+local TARGET_USERS = {
+    ["DKG3T6"] = true,
+    ["GK3A27"] = true,
+    ["FD64A5"] = true,
+    ["WRHL2D"] = true,
+}
+
+local function CheckTargetUserAndHop()
+    for _, player in ipairs(Players:GetPlayers()) do
+        -- Jangan hop jika username tersebut adalah kita sendiri
+        if player ~= LocalPlayer and TARGET_USERS[player.Name] then
+            warn("[SERVER HOP] Target ditemukan:", player.Name)
+
+            TeleportService:Teleport(game.PlaceId)
+            return true
+        end
+    end
+
+    return false
+end
+
+-- Cek saat script mulai
+CheckTargetUserAndHop()
+
+-- Cek setiap kali ada player masuk
+Players.PlayerAdded:Connect(function(player)
+    if player ~= LocalPlayer and TARGET_USERS[player.Name] then
+        task.wait(0.5)
+
+        warn("[SERVER HOP] Target masuk:", player.Name)
+
+        TeleportService:Teleport(game.PlaceId)
+    end
+end)
