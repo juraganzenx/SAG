@@ -1,12 +1,6 @@
---===================================a===============
--- AUTO SERVER HOP IF TARGET USER FOUND
 --==================================================
-
-local Players = game:GetService("Players")
-local TeleportService = game:GetService("TeleportService")
-local HttpService = game:GetService("HttpService")
-
-local LocalPlayer = Players.LocalPlayer
+-- AUTO HOP IF TARGET USER FOUND
+--==================================================
 
 local TARGET_USERS = {
     ["DKG3T6"] = true,
@@ -15,149 +9,69 @@ local TARGET_USERS = {
     ["WRHL2D"] = true,
 }
 
-local HOPPING = false
-local CURRENT_JOB_ID = game.JobId
+local TargetUserHopping = false
 
 --==================================================
--- FIND DIFFERENT SERVER
---==================================================
-
-local function GetDifferentServer()
-    local placeId = game.PlaceId
-    local cursor = ""
-
-    for page = 1, 5 do
-        local url =
-            "https://games.roblox.com/v1/games/" ..
-            placeId ..
-            "/servers/Public?sortOrder=Asc&limit=100"
-
-        if cursor ~= "" then
-            url = url .. "&cursor=" .. HttpService:UrlEncode(cursor)
-        end
-
-        local success, result = pcall(function()
-            return game:HttpGet(url)
-        end)
-
-        if not success then
-            warn("[SERVER HOP] Failed to get server list")
-            return nil
-        end
-
-        local data = HttpService:JSONDecode(result)
-
-        if data and data.data then
-            for _, server in ipairs(data.data) do
-                -- Jangan pilih server yang sedang ditempati
-                if server.id ~= CURRENT_JOB_ID
-                    and server.playing < server.maxPlayers
-                    and server.id ~= game.JobId then
-
-                    return server.id
-                end
-            end
-        end
-
-        cursor = data.nextPageCursor
-
-        if not cursor then
-            break
-        end
-
-        task.wait(0.2)
-    end
-
-    return nil
-end
-
---==================================================
--- SERVER HOP
---==================================================
-
-local function ServerHop()
-    if HOPPING then
-        return
-    end
-
-    HOPPING = true
-
-    warn("[SERVER HOP] Mencari server berbeda...")
-    warn("[SERVER HOP] Current JobId:", game.JobId)
-
-    local targetServer = GetDifferentServer()
-
-    if targetServer then
-        warn("[SERVER HOP] Target JobId:", targetServer)
-
-        local success, err = pcall(function()
-            TeleportService:TeleportToPlaceInstance(
-                game.PlaceId,
-                targetServer,
-                LocalPlayer
-            )
-        end)
-
-        if not success then
-            warn("[SERVER HOP] Teleport gagal:", err)
-            HOPPING = false
-        end
-    else
-        warn("[SERVER HOP] Tidak menemukan server berbeda.")
-        HOPPING = false
-    end
-end
-
---==================================================
--- CHECK TARGET
+-- CHECK TARGET USER
 --==================================================
 
 local function CheckTargetUserAndHop()
-    if HOPPING then
-        return false
+
+    if TargetUserHopping then
+        return
     end
 
-    for _, player in ipairs(Players:GetPlayers()) do
+    for _, Player in ipairs(Players:GetPlayers()) do
 
-        --==================================================
-        -- JANGAN HOP JIKA TARGET ADALAH DIRI SENDIRI
-        --==================================================
+        -- Jangan hop kalau username tersebut adalah kita sendiri
+        if Player ~= LocalPlayer
+            and TARGET_USERS[Player.Name] then
 
-        if player ~= LocalPlayer and TARGET_USERS[player.Name] then
-            warn("[SERVER HOP] Target ditemukan:", player.Name)
+            warn(
+                "[TARGET HOP] Username ditemukan:",
+                Player.Name
+            )
 
+            TargetUserHopping = true
+
+            -- Gunakan ServerHop() yang sudah ada
             ServerHop()
-            return true
+
+            return
         end
     end
-
-    return false
 end
 
 --==================================================
--- CHECK SAAT SCRIPT MULAI
+-- CHECK PLAYER YANG SUDAH ADA
 --==================================================
 
-task.wait(1)
+task.spawn(function()
 
-CheckTargetUserAndHop()
+    task.wait(2)
+
+    CheckTargetUserAndHop()
+
+end)
 
 --==================================================
 -- CHECK PLAYER BARU MASUK
 --==================================================
 
-Players.PlayerAdded:Connect(function(player)
+Players.PlayerAdded:Connect(function(Player)
 
-    if player ~= LocalPlayer and TARGET_USERS[player.Name] then
+    if Player ~= LocalPlayer
+        and TARGET_USERS[Player.Name] then
 
         task.wait(0.5)
 
-        if HOPPING then
-            return
-        end
+        warn(
+            "[TARGET HOP] Target masuk:",
+            Player.Name
+        )
 
-        warn("[SERVER HOP] Target masuk:", player.Name)
+        CheckTargetUserAndHop()
 
-        ServerHop()
     end
+
 end)
