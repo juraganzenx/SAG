@@ -1,9 +1,9 @@
 --==================================================
 -- ULTRA LOW GRAPHIC
+-- 3D RENDERING TETAP AKTIF
 --==================================================
 
 local Lighting = game:GetService("Lighting")
-local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 --==================================================
@@ -91,6 +91,10 @@ local function OptimizeObject(obj)
     end)
 end
 
+--==================================================
+-- OPTIMIZE EXISTING OBJECTS
+--==================================================
+
 for _, obj in ipairs(Workspace:GetDescendants()) do
     OptimizeObject(obj)
 end
@@ -106,12 +110,11 @@ Workspace.DescendantAdded:Connect(function(obj)
 end)
 
 --==================================================
--- 3D RENDERING OFF
+-- 3D RENDERING
 --==================================================
-
-pcall(function()
-    RunService:Set3dRenderingEnabled(false)
-end)
+-- TETAP AKTIF
+-- Tidak menggunakan:
+-- RunService:Set3dRenderingEnabled(false)
 
 print("====================================")
 print(" ULTRA LOW GRAPHIC ENABLED")
@@ -121,5 +124,5 @@ print(" Post FX        : OFF")
 print(" Particles      : OFF")
 print(" Lights         : OFF")
 print(" Water FX       : OFF")
-print(" 3D Rendering   : OFF")
+print(" 3D Rendering   : ON")
 print("====================================")
