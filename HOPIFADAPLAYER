@@ -1,5 +1,13 @@
 --==================================================
--- SPEED TARGET SERVER HOP
+-- TARGET PLAYER / SPEED SERVER HOP
+--
+-- TRIGGER:
+-- 1. Player lain bernama boyzsae1 - boyzsae100
+--       ATAU
+-- 2. Player lain memiliki Speed > 5B
+--
+-- SELF TARGET DIABAIKAN
+-- SERVER TUJUAN = SERVER TERSEPI
 --==================================================
 
 local Players = game:GetService("Players")
@@ -14,10 +22,25 @@ local LocalPlayer = Players.LocalPlayer
 
 local SPEED_LIMIT = 5e9
 
-local CHECK_DELAY = 10
+local CHECK_DELAY = 1
 local HOP_DELAY = 1
 
 local HopRunning = false
+
+--==================================================
+-- TARGET USERS
+-- boyzsae1 - boyzsae100
+--==================================================
+
+local TARGET_USERS = {}
+
+for i = 1, 100 do
+
+    TARGET_USERS[
+        string.upper("boyzsae" .. i)
+    ] = true
+
+end
 
 --==================================================
 -- REMOVE OLD GUI
@@ -37,7 +60,25 @@ pcall(function()
 end)
 
 --==================================================
--- GET SPEED
+-- CHECK TARGET USERNAME
+--==================================================
+
+local function IsTargetUsername(Player)
+
+    -- Jangan pernah target diri sendiri
+    if Player == LocalPlayer then
+        return false
+    end
+
+    local Username =
+        string.upper(Player.Name)
+
+    return TARGET_USERS[Username] == true
+
+end
+
+--==================================================
+-- GET PLAYER SPEED
 --==================================================
 
 local function GetPlayerSpeed(Player)
@@ -58,30 +99,166 @@ local function GetPlayerSpeed(Player)
 
     local Value = Speed.Value
 
+    -- NumberValue / IntValue
     if typeof(Value) == "number" then
+
         return Value
+
     end
 
+    -- StringValue
+    local Text =
+        tostring(Value)
+
+    -- Hilangkan koma
+    Text =
+        Text:gsub(",", "")
+
+    -- Coba angka biasa
     local Number =
-        tonumber(
-            tostring(Value):gsub(",", "")
+        tonumber(Text)
+
+    if Number then
+        return Number
+    end
+
+    --==================================================
+    -- SUPPORT FORMAT:
+    -- 5B
+    -- 10B
+    -- 2.5B
+    -- 500M
+    --==================================================
+
+    local Clean =
+        Text:gsub("%s+", ""):upper()
+
+    local NumberPart, Suffix =
+        Clean:match(
+            "^([%d%.]+)([KMBT]?)$"
         )
 
-    return Number
+    if not NumberPart then
+        return nil
+    end
+
+    local Base =
+        tonumber(NumberPart)
+
+    if not Base then
+        return nil
+    end
+
+    local Multiplier = 1
+
+    if Suffix == "K" then
+
+        Multiplier = 1e3
+
+    elseif Suffix == "M" then
+
+        Multiplier = 1e6
+
+    elseif Suffix == "B" then
+
+        Multiplier = 1e9
+
+    elseif Suffix == "T" then
+
+        Multiplier = 1e12
+
+    end
+
+    return Base * Multiplier
+
+end
+
+--==================================================
+-- FORMAT NUMBER
+--==================================================
+
+local function FormatNumber(Number)
+
+    if not Number then
+        return "?"
+    end
+
+    if Number >= 1e12 then
+
+        return string.format(
+            "%.2fT",
+            Number / 1e12
+        )
+
+    elseif Number >= 1e9 then
+
+        return string.format(
+            "%.2fB",
+            Number / 1e9
+        )
+
+    elseif Number >= 1e6 then
+
+        return string.format(
+            "%.2fM",
+            Number / 1e6
+        )
+
+    elseif Number >= 1e3 then
+
+        return string.format(
+            "%.2fK",
+            Number / 1e3
+        )
+
+    end
+
+    return tostring(Number)
 
 end
 
 --==================================================
 -- FIND TARGET
+--
+-- OR CONDITION:
+--
+-- boyzsae1-100
+--       OR
+-- Speed > 5B
 --==================================================
 
-local function FindSpeedTarget()
+local function FindTarget()
+
+    --==================================================
+    -- PRIORITY 1
+    -- TARGET USERNAME
+    --==================================================
 
     for _, Player in ipairs(
         Players:GetPlayers()
     ) do
 
-        -- Jangan pernah target diri sendiri
+        if Player ~= LocalPlayer then
+
+            if IsTargetUsername(Player) then
+
+                return Player, "USERNAME"
+
+            end
+
+        end
+
+    end
+
+    --==================================================
+    -- PRIORITY 2
+    -- SPEED > 5B
+    --==================================================
+
+    for _, Player in ipairs(
+        Players:GetPlayers()
+    ) do
+
         if Player ~= LocalPlayer then
 
             local Speed =
@@ -122,21 +299,29 @@ local function GetServers()
             Url =
                 Url
                 .. "&cursor="
-                .. HttpService:UrlEncode(Cursor)
+                .. HttpService:UrlEncode(
+                    Cursor
+                )
 
         end
+
+        print(
+            "[TARGET HOP] Request server list..."
+        )
 
         local Success, Result =
             pcall(function()
 
-                return game:HttpGet(Url)
+                return game:HttpGet(
+                    Url
+                )
 
             end)
 
         if not Success then
 
             warn(
-                "[SPEED HOP] HTTP ERROR:",
+                "[TARGET HOP] HTTP ERROR:",
                 Result
             )
 
@@ -156,7 +341,7 @@ local function GetServers()
         if not DecodeSuccess then
 
             warn(
-                "[SPEED HOP] JSON ERROR"
+                "[TARGET HOP] JSON DECODE ERROR"
             )
 
             return Servers
@@ -167,7 +352,10 @@ local function GetServers()
             Data.data or {}
         ) do
 
+            -- Jangan kembali ke server sekarang
             if Server.id ~= game.JobId
+
+                -- Harus ada slot
                 and Server.playing < Server.maxPlayers then
 
                 table.insert(
@@ -189,7 +377,7 @@ local function GetServers()
 end
 
 --==================================================
--- FIND SEPEST SERVER
+-- FIND LOWEST SERVER
 --==================================================
 
 local function GetLowestServer(Servers)
@@ -198,6 +386,7 @@ local function GetLowestServer(Servers)
         return nil
     end
 
+    -- Sort dari paling sedikit player
     table.sort(
         Servers,
         function(A, B)
@@ -212,7 +401,12 @@ local function GetLowestServer(Servers)
 
     local Candidates = {}
 
-    for _, Server in ipairs(Servers) do
+    -- Ambil semua server dengan jumlah player
+    -- sama-sama paling sedikit
+
+    for _, Server in ipairs(
+        Servers
+    ) do
 
         if Server.playing ==
             LowestPlayers then
@@ -230,6 +424,13 @@ local function GetLowestServer(Servers)
 
     end
 
+    if #Candidates == 0 then
+        return nil
+    end
+
+    -- Random jika ada beberapa server
+    -- dengan jumlah player sama
+
     return Candidates[
         math.random(
             1,
@@ -243,7 +444,10 @@ end
 -- SERVER HOP
 --==================================================
 
-local function ServerHop(TargetPlayer, Speed)
+local function ServerHop(
+    TargetPlayer,
+    Trigger
+)
 
     if HopRunning then
         return
@@ -251,12 +455,40 @@ local function ServerHop(TargetPlayer, Speed)
 
     HopRunning = true
 
+    local Speed =
+        GetPlayerSpeed(
+            TargetPlayer
+        )
+
     print("==========================================")
-    print("[SPEED HOP] TARGET FOUND")
-    print("[SPEED HOP] Player:", TargetPlayer.Name)
-    print("[SPEED HOP] Speed:", Speed)
-    print("[SPEED HOP] Limit:", SPEED_LIMIT)
-    print("[SPEED HOP] Mencari server sepi...")
+    print("[TARGET HOP] TARGET FOUND")
+    print(
+        "[TARGET HOP] Player:",
+        TargetPlayer.Name
+    )
+    print(
+        "[TARGET HOP] Trigger:",
+        Trigger
+    )
+
+    if Speed then
+
+        print(
+            "[TARGET HOP] Speed:",
+            FormatNumber(Speed)
+        )
+
+    end
+
+    print(
+        "[TARGET HOP] Current Job:",
+        game.JobId
+    )
+
+    print(
+        "[TARGET HOP] Mencari server TERSEPI..."
+    )
+
     print("==========================================")
 
     task.wait(HOP_DELAY)
@@ -267,7 +499,7 @@ local function ServerHop(TargetPlayer, Speed)
     if #Servers == 0 then
 
         warn(
-            "[SPEED HOP] Tidak ada server tersedia."
+            "[TARGET HOP] Tidak ada server tersedia."
         )
 
         HopRunning = false
@@ -276,13 +508,67 @@ local function ServerHop(TargetPlayer, Speed)
 
     end
 
+    print(
+        "[TARGET HOP] Total server:",
+        #Servers
+    )
+
+    --==================================================
+    -- SORT
+    --==================================================
+
+    table.sort(
+        Servers,
+        function(A, B)
+
+            return A.playing < B.playing
+
+        end
+    )
+
+    --==================================================
+    -- DEBUG TOP 10 SERVER TERSEPI
+    --==================================================
+
+    print("==========================================")
+    print(
+        "[TARGET HOP] TOP 10 SERVER TERSEPI"
+    )
+    print("==========================================")
+
+    for i = 1, math.min(
+        10,
+        #Servers
+    ) do
+
+        local Server =
+            Servers[i]
+
+        print(
+            i,
+            "| Players:",
+            Server.playing,
+            "/",
+            Server.maxPlayers,
+            "| JobId:",
+            Server.id
+        )
+
+    end
+
+    --==================================================
+    -- SELECT
+    --==================================================
+
     local Server =
-        GetLowestServer(Servers)
+        GetLowestServer(
+            Servers
+        )
 
     if not Server then
 
         warn(
-            "[SPEED HOP] Gagal memilih server."
+            "[TARGET HOP] Gagal memilih server."
         )
 
         HopRunning = false
@@ -292,18 +578,24 @@ local function ServerHop(TargetPlayer, Speed)
     end
 
     print("==========================================")
-    print("[SPEED HOP] SERVER TERPILIH")
     print(
-        "[SPEED HOP] Players:",
+        "[TARGET HOP] SERVER TERPILIH"
+    )
+    print(
+        "[TARGET HOP] Players:",
         Server.playing,
         "/",
         Server.maxPlayers
     )
     print(
-        "[SPEED HOP] JobId:",
+        "[TARGET HOP] JobId:",
         Server.id
     )
     print("==========================================")
+
+    --==================================================
+    -- TELEPORT
+    --==================================================
 
     local Success, Error =
         pcall(function()
@@ -319,7 +611,7 @@ local function ServerHop(TargetPlayer, Speed)
     if not Success then
 
         warn(
-            "[SPEED HOP] TELEPORT ERROR:",
+            "[TARGET HOP] TELEPORT ERROR:",
             Error
         )
 
@@ -328,74 +620,6 @@ local function ServerHop(TargetPlayer, Speed)
     end
 
 end
-
---==================================================
--- CHECK TARGET
---==================================================
-
-local function CheckSpeedTarget()
-
-    if HopRunning then
-        return
-    end
-
-    local Player, Speed =
-        FindSpeedTarget()
-
-    if Player then
-
-        print(
-            "[SPEED HOP] Target ditemukan:",
-            Player.Name,
-            "| Speed:",
-            Speed
-        )
-
-        ServerHop(
-            Player,
-            Speed
-        )
-
-    end
-
-end
-
---==================================================
--- PLAYER JOIN CHECK
---==================================================
-
-Players.PlayerAdded:Connect(function(Player)
-
-    if Player == LocalPlayer then
-        return
-    end
-
-    task.wait(0.5)
-
-    if HopRunning then
-        return
-    end
-
-    local Speed =
-        GetPlayerSpeed(Player)
-
-    if Speed and Speed > SPEED_LIMIT then
-
-        print(
-            "[SPEED HOP] TARGET JOINED:",
-            Player.Name,
-            "| Speed:",
-            Speed
-        )
-
-        ServerHop(
-            Player,
-            Speed
-        )
-
-    end
-
-end)
 
 --==================================================
 -- GUI
@@ -408,6 +632,7 @@ Gui.Name =
     "SpeedTargetServerHop"
 
 Gui.ResetOnSpawn = false
+
 Gui.Parent =
     LocalPlayer.PlayerGui
 
@@ -419,12 +644,17 @@ local Frame =
     Instance.new("Frame")
 
 Frame.Size =
-    UDim2.new(0, 210, 0, 100)
+    UDim2.new(
+        0,
+        240,
+        0,
+        125
+    )
 
 Frame.Position =
     UDim2.new(
         1,
-        -225,
+        -255,
         0,
         100
     )
@@ -437,15 +667,21 @@ Frame.BackgroundColor3 =
     )
 
 Frame.BorderSizePixel = 0
-Frame.Parent = Gui
+
+Frame.Parent =
+    Gui
 
 local Corner =
     Instance.new("UICorner")
 
 Corner.CornerRadius =
-    UDim.new(0, 8)
+    UDim.new(
+        0,
+        8
+    )
 
-Corner.Parent = Frame
+Corner.Parent =
+    Frame
 
 --==================================================
 -- TITLE
@@ -459,13 +695,13 @@ Title.Size =
         1,
         0,
         0,
-        25
+        27
     )
 
 Title.BackgroundTransparency = 1
 
 Title.Text =
-    "SPEED TARGET HOP"
+    "TARGET SERVER HOP"
 
 Title.TextColor3 =
     Color3.fromRGB(
@@ -475,10 +711,12 @@ Title.TextColor3 =
     )
 
 Title.TextSize = 14
+
 Title.Font =
     Enum.Font.GothamBold
 
-Title.Parent = Frame
+Title.Parent =
+    Frame
 
 --==================================================
 -- STATUS
@@ -492,7 +730,7 @@ Status.Size =
         1,
         -20,
         0,
-        22
+        42
     )
 
 Status.Position =
@@ -500,13 +738,14 @@ Status.Position =
         0,
         10,
         0,
-        25
+        27
     )
 
 Status.BackgroundTransparency = 1
 
 Status.Text =
-    "Target: Speed > 5B"
+    "Monitoring...\n"
+    .. "boyzsae1-100 OR Speed > 5B"
 
 Status.TextColor3 =
     Color3.fromRGB(
@@ -515,11 +754,15 @@ Status.TextColor3 =
         180
     )
 
-Status.TextSize = 12
+Status.TextSize = 11
+
 Status.Font =
     Enum.Font.Gotham
 
-Status.Parent = Frame
+Status.TextWrapped = true
+
+Status.Parent =
+    Frame
 
 --==================================================
 -- BUTTON
@@ -533,7 +776,7 @@ Button.Size =
         1,
         -20,
         0,
-        35
+        38
     )
 
 Button.Position =
@@ -541,7 +784,7 @@ Button.Position =
         0,
         10,
         0,
-        57
+        77
     )
 
 Button.BackgroundColor3 =
@@ -566,106 +809,294 @@ Button.TextSize = 13
 Button.Font =
     Enum.Font.GothamBold
 
-Button.Parent = Frame
+Button.Parent =
+    Frame
 
 local ButtonCorner =
     Instance.new("UICorner")
 
 ButtonCorner.CornerRadius =
-    UDim.new(0, 6)
+    UDim.new(
+        0,
+        6
+    )
 
-ButtonCorner.Parent = Button
-
---==================================================
--- BUTTON CLICK
---==================================================
-
-Button.MouseButton1Click:Connect(function()
-
-    if HopRunning then
-        return
-    end
-
-    local Player, Speed =
-        FindSpeedTarget()
-
-    if Player then
-
-        Status.Text =
-            Player.Name
-            .. " | "
-            .. tostring(Speed)
-
-        ServerHop(
-            Player,
-            Speed
-        )
-
-    else
-
-        Status.Text =
-            "Tidak ada Speed > 5B"
-
-        print(
-            "[SPEED HOP] Tidak ada player dengan Speed > 5B"
-        )
-
-    end
-
-end)
+ButtonCorner.Parent =
+    Button
 
 --==================================================
--- AUTO CHECK
+-- MANUAL CHECK
 --==================================================
 
-task.spawn(function()
+Button.MouseButton1Click:Connect(
+    function()
 
-    while true do
+        if HopRunning then
+            return
+        end
 
-        if not HopRunning then
+        local Player, Trigger =
+            FindTarget()
 
-            local Player, Speed =
-                FindSpeedTarget()
+        if Player then
 
-            if Player then
+            local Speed =
+                GetPlayerSpeed(
+                    Player
+                )
+
+            if Trigger == "USERNAME" then
 
                 Status.Text =
-                    Player.Name
-                    .. " | Speed: "
-                    .. tostring(Speed)
+                    "USERNAME TARGET\n"
+                    .. Player.Name
 
-                ServerHop(
-                    Player,
-                    Speed
+                print(
+                    "[TARGET HOP] Username target:",
+                    Player.Name
                 )
 
             else
 
                 Status.Text =
-                    "Monitoring | > 5B"
+                    "SPEED TARGET\n"
+                    .. Player.Name
+                    .. " | "
+                    .. FormatNumber(
+                        Speed
+                    )
+
+                print(
+                    "[TARGET HOP] Speed target:",
+                    Player.Name,
+                    "|",
+                    Speed
+                )
 
             end
 
+            ServerHop(
+                Player,
+                Trigger
+            )
+
+        else
+
+            Status.Text =
+                "Tidak ada target"
+
+            print(
+                "[TARGET HOP] Tidak ada target."
+            )
+
         end
 
-        task.wait(CHECK_DELAY)
+    end
+)
+
+--==================================================
+-- PLAYER JOIN
+--==================================================
+
+Players.PlayerAdded:Connect(
+    function(Player)
+
+        if Player == LocalPlayer then
+            return
+        end
+
+        -- Tunggu sebentar agar leaderstats
+        -- sempat dibuat
+        task.wait(0.5)
+
+        if HopRunning then
+            return
+        end
+
+        --==================================================
+        -- USERNAME TRIGGER
+        --==================================================
+
+        if IsTargetUsername(Player) then
+
+            print("==========================================")
+            print(
+                "[TARGET HOP] TARGET USER JOINED:",
+                Player.Name
+            )
+            print("==========================================")
+
+            Status.Text =
+                "USERNAME TARGET\n"
+                .. Player.Name
+
+            ServerHop(
+                Player,
+                "USERNAME"
+            )
+
+            return
+
+        end
+
+        --==================================================
+        -- SPEED TRIGGER
+        --==================================================
+
+        local Speed =
+            GetPlayerSpeed(
+                Player
+            )
+
+        if Speed and Speed > SPEED_LIMIT then
+
+            print("==========================================")
+            print(
+                "[TARGET HOP] SPEED TARGET JOINED:",
+                Player.Name
+            )
+            print(
+                "[TARGET HOP] Speed:",
+                FormatNumber(Speed)
+            )
+            print("==========================================")
+
+            Status.Text =
+                "SPEED TARGET\n"
+                .. Player.Name
+                .. " | "
+                .. FormatNumber(
+                    Speed
+                )
+
+            ServerHop(
+                Player,
+                Speed
+            )
+
+        end
 
     end
+)
 
-end)
+--==================================================
+-- AUTO MONITOR
+--==================================================
+
+task.spawn(
+    function()
+
+        while true do
+
+            if not HopRunning then
+
+                local Player, Trigger =
+                    FindTarget()
+
+                if Player then
+
+                    local Speed =
+                        GetPlayerSpeed(
+                            Player
+                        )
+
+                    if Trigger == "USERNAME" then
+
+                        Status.Text =
+                            "USERNAME TARGET\n"
+                            .. Player.Name
+
+                        print(
+                            "[TARGET HOP] USERNAME:",
+                            Player.Name
+                        )
+
+                    else
+
+                        Status.Text =
+                            "SPEED TARGET\n"
+                            .. Player.Name
+                            .. " | "
+                            .. FormatNumber(
+                                Speed
+                            )
+
+                        print(
+                            "[TARGET HOP] SPEED:",
+                            Player.Name,
+                            "|",
+                            FormatNumber(
+                                Speed
+                            )
+                        )
+
+                    end
+
+                    ServerHop(
+                        Player,
+                        Trigger
+                    )
+
+                else
+
+                    Status.Text =
+                        "Monitoring...\n"
+                        .. "boyzsae1-100 OR Speed > 5B"
+
+                end
+
+            end
+
+            task.wait(
+                CHECK_DELAY
+            )
+
+        end
+
+    end
+)
 
 --==================================================
 -- START
 --==================================================
 
 print("==========================================")
-print(" SPEED TARGET SERVER HOP")
+print(" TARGET PLAYER / SPEED SERVER HOP")
 print("==========================================")
+
 print(
-    "[SPEED HOP] Threshold:",
-    SPEED_LIMIT
+    "[TARGET HOP] My Username:",
+    LocalPlayer.Name
 )
+
 print(
-    "[SPEED HOP] Auto monitoring: ON"
+    "[TARGET HOP] Username Target:",
+    "boyzsae1 - boyzsae100"
 )
+
+print(
+    "[TARGET HOP] Speed Trigger:",
+    "> 5B"
+)
+
+print(
+    "[TARGET HOP] Condition:",
+    "USERNAME OR SPEED"
+)
+
+print(
+    "[TARGET HOP] Check Delay:",
+    CHECK_DELAY,
+    "second"
+)
+
+print(
+    "[TARGET HOP] Destination:",
+    "SERVER TERSEPI"
+)
+
+print(
+    "[TARGET HOP] Auto Monitoring: ON"
+)
+
 print("==========================================")
