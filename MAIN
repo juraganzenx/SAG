@@ -11,7 +11,6 @@ local function Execute(url)
 end
 
 Execute("https://raw.githubusercontent.com/juraganzenx/SAG/refs/heads/main/KAITUN")
-Execute("https://raw.githubusercontent.com/juraganzenx/SAG/refs/heads/main/DESTROYPLOT")
 Execute("https://raw.githubusercontent.com/juraganzenx/SAG/refs/heads/main/GODMODE")
 Execute("https://raw.githubusercontent.com/juraganzenx/SAG/refs/heads/main/EQUIPBESTPET")
 Execute("https://raw.githubusercontent.com/juraganzenx/SAG/refs/heads/main/UPGRADEBASE")
