@@ -1,13 +1,16 @@
 --==================================================
 -- TARGET PLAYER / SPEED SERVER HOP
 --
--- TRIGGER:
--- 1. Player lain bernama boyzsae1 - boyzsae100
---       ATAU
--- 2. Player lain memiliki Speed > 5B
+-- AUTO TRIGGER:
+-- 1. Player lain = boyzsae1 - boyzsae100
+--       OR
+-- 2. Player lain Speed > 5B
 --
--- SELF TARGET DIABAIKAN
--- SERVER TUJUAN = SERVER TERSEPI
+-- DESTINATION:
+-- Server public paling sepi
+--
+-- BUTTON:
+-- HOP SERVER SEPI
 --==================================================
 
 local Players = game:GetService("Players")
@@ -22,7 +25,7 @@ local LocalPlayer = Players.LocalPlayer
 
 local SPEED_LIMIT = 5e9
 
-local CHECK_DELAY = 1
+local CHECK_DELAY = 20
 local HOP_DELAY = 1
 
 local HopRunning = false
@@ -97,7 +100,8 @@ local function GetPlayerSpeed(Player)
         return nil
     end
 
-    local Value = Speed.Value
+    local Value =
+        Speed.Value
 
     -- NumberValue / IntValue
     if typeof(Value) == "number" then
@@ -106,7 +110,6 @@ local function GetPlayerSpeed(Player)
 
     end
 
-    -- StringValue
     local Text =
         tostring(Value)
 
@@ -114,7 +117,7 @@ local function GetPlayerSpeed(Player)
     Text =
         Text:gsub(",", "")
 
-    -- Coba angka biasa
+    -- Coba angka langsung
     local Number =
         tonumber(Text)
 
@@ -123,11 +126,8 @@ local function GetPlayerSpeed(Player)
     end
 
     --==================================================
-    -- SUPPORT FORMAT:
-    -- 5B
-    -- 10B
-    -- 2.5B
-    -- 500M
+    -- SUPPORT FORMAT
+    -- 5K / 5M / 5B / 5T
     --==================================================
 
     local Clean =
@@ -220,18 +220,14 @@ end
 --==================================================
 -- FIND TARGET
 --
--- OR CONDITION:
---
--- boyzsae1-100
---       OR
--- Speed > 5B
+-- USERNAME OR SPEED
 --==================================================
 
 local function FindTarget()
 
     --==================================================
     -- PRIORITY 1
-    -- TARGET USERNAME
+    -- BOYZSAE1 - BOYZSAE100
     --==================================================
 
     for _, Player in ipairs(
@@ -306,7 +302,7 @@ local function GetServers()
         end
 
         print(
-            "[TARGET HOP] Request server list..."
+            "[SERVER HOP] Request server list..."
         )
 
         local Success, Result =
@@ -321,7 +317,7 @@ local function GetServers()
         if not Success then
 
             warn(
-                "[TARGET HOP] HTTP ERROR:",
+                "[SERVER HOP] HTTP ERROR:",
                 Result
             )
 
@@ -341,7 +337,7 @@ local function GetServers()
         if not DecodeSuccess then
 
             warn(
-                "[TARGET HOP] JSON DECODE ERROR"
+                "[SERVER HOP] JSON DECODE ERROR"
             )
 
             return Servers
@@ -355,7 +351,7 @@ local function GetServers()
             -- Jangan kembali ke server sekarang
             if Server.id ~= game.JobId
 
-                -- Harus ada slot
+                -- Harus masih ada slot
                 and Server.playing < Server.maxPlayers then
 
                 table.insert(
@@ -377,7 +373,7 @@ local function GetServers()
 end
 
 --==================================================
--- FIND LOWEST SERVER
+-- GET SERVER TERSEPI
 --==================================================
 
 local function GetLowestServer(Servers)
@@ -386,7 +382,6 @@ local function GetLowestServer(Servers)
         return nil
     end
 
-    -- Sort dari paling sedikit player
     table.sort(
         Servers,
         function(A, B)
@@ -400,9 +395,6 @@ local function GetLowestServer(Servers)
         Servers[1].playing
 
     local Candidates = {}
-
-    -- Ambil semua server dengan jumlah player
-    -- sama-sama paling sedikit
 
     for _, Server in ipairs(
         Servers
@@ -428,8 +420,9 @@ local function GetLowestServer(Servers)
         return nil
     end
 
-    -- Random jika ada beberapa server
-    -- dengan jumlah player sama
+    -- Kalau ada beberapa server dengan
+    -- player sama-sama paling sedikit,
+    -- pilih random
 
     return Candidates[
         math.random(
@@ -441,54 +434,21 @@ local function GetLowestServer(Servers)
 end
 
 --==================================================
--- SERVER HOP
+-- HOP TO LOWEST SERVER
 --==================================================
 
-local function ServerHop(
-    TargetPlayer,
-    Trigger
-)
+local function HopToLowestServer()
 
     if HopRunning then
-        return
+        return false
     end
 
     HopRunning = true
 
-    local Speed =
-        GetPlayerSpeed(
-            TargetPlayer
-        )
-
     print("==========================================")
-    print("[TARGET HOP] TARGET FOUND")
     print(
-        "[TARGET HOP] Player:",
-        TargetPlayer.Name
+        "[SERVER HOP] Mencari server paling sepi..."
     )
-    print(
-        "[TARGET HOP] Trigger:",
-        Trigger
-    )
-
-    if Speed then
-
-        print(
-            "[TARGET HOP] Speed:",
-            FormatNumber(Speed)
-        )
-
-    end
-
-    print(
-        "[TARGET HOP] Current Job:",
-        game.JobId
-    )
-
-    print(
-        "[TARGET HOP] Mencari server TERSEPI..."
-    )
-
     print("==========================================")
 
     task.wait(HOP_DELAY)
@@ -499,19 +459,14 @@ local function ServerHop(
     if #Servers == 0 then
 
         warn(
-            "[TARGET HOP] Tidak ada server tersedia."
+            "[SERVER HOP] Tidak ada server tersedia."
         )
 
         HopRunning = false
 
-        return
+        return false
 
     end
-
-    print(
-        "[TARGET HOP] Total server:",
-        #Servers
-    )
 
     --==================================================
     -- SORT
@@ -527,12 +482,12 @@ local function ServerHop(
     )
 
     --==================================================
-    -- DEBUG TOP 10 SERVER TERSEPI
+    -- DEBUG TOP 10
     --==================================================
 
     print("==========================================")
     print(
-        "[TARGET HOP] TOP 10 SERVER TERSEPI"
+        "[SERVER HOP] TOP 10 SERVER TERSEPI"
     )
     print("==========================================")
 
@@ -568,27 +523,27 @@ local function ServerHop(
     if not Server then
 
         warn(
-            "[TARGET HOP] Gagal memilih server."
+            "[SERVER HOP] Gagal memilih server."
         )
 
         HopRunning = false
 
-        return
+        return false
 
     end
 
     print("==========================================")
     print(
-        "[TARGET HOP] SERVER TERPILIH"
+        "[SERVER HOP] SERVER TERPILIH"
     )
     print(
-        "[TARGET HOP] Players:",
+        "[SERVER HOP] Players:",
         Server.playing,
         "/",
         Server.maxPlayers
     )
     print(
-        "[TARGET HOP] JobId:",
+        "[SERVER HOP] JobId:",
         Server.id
     )
     print("==========================================")
@@ -611,13 +566,58 @@ local function ServerHop(
     if not Success then
 
         warn(
-            "[TARGET HOP] TELEPORT ERROR:",
+            "[SERVER HOP] TELEPORT ERROR:",
             Error
         )
 
         HopRunning = false
 
+        return false
+
     end
+
+    return true
+
+end
+
+--==================================================
+-- AUTO TARGET HOP
+--==================================================
+
+local function TriggerTargetHop(
+    Player,
+    Trigger
+)
+
+    if HopRunning then
+        return
+    end
+
+    local Speed =
+        GetPlayerSpeed(Player)
+
+    print("==========================================")
+    print(
+        "[TARGET HOP] TARGET FOUND:",
+        Player.Name
+    )
+    print(
+        "[TARGET HOP] Trigger:",
+        Trigger
+    )
+
+    if Speed then
+
+        print(
+            "[TARGET HOP] Speed:",
+            FormatNumber(Speed)
+        )
+
+    end
+
+    print("==========================================")
+
+    HopToLowestServer()
 
 end
 
@@ -765,7 +765,7 @@ Status.Parent =
     Frame
 
 --==================================================
--- BUTTON
+-- HOP BUTTON
 --==================================================
 
 local Button =
@@ -795,7 +795,7 @@ Button.BackgroundColor3 =
     )
 
 Button.Text =
-    "CHECK & HOP"
+    "HOP SERVER SEPI"
 
 Button.TextColor3 =
     Color3.fromRGB(
@@ -825,7 +825,8 @@ ButtonCorner.Parent =
     Button
 
 --==================================================
--- MANUAL CHECK
+-- BUTTON
+-- LANGSUNG HOP SERVER SEPI
 --==================================================
 
 Button.MouseButton1Click:Connect(
@@ -835,61 +836,20 @@ Button.MouseButton1Click:Connect(
             return
         end
 
-        local Player, Trigger =
-            FindTarget()
+        Status.Text =
+            "Mencari server sepi..."
 
-        if Player then
+        print(
+            "[SERVER HOP] Manual hop..."
+        )
 
-            local Speed =
-                GetPlayerSpeed(
-                    Player
-                )
+        task.spawn(
+            function()
 
-            if Trigger == "USERNAME" then
-
-                Status.Text =
-                    "USERNAME TARGET\n"
-                    .. Player.Name
-
-                print(
-                    "[TARGET HOP] Username target:",
-                    Player.Name
-                )
-
-            else
-
-                Status.Text =
-                    "SPEED TARGET\n"
-                    .. Player.Name
-                    .. " | "
-                    .. FormatNumber(
-                        Speed
-                    )
-
-                print(
-                    "[TARGET HOP] Speed target:",
-                    Player.Name,
-                    "|",
-                    Speed
-                )
+                HopToLowestServer()
 
             end
-
-            ServerHop(
-                Player,
-                Trigger
-            )
-
-        else
-
-            Status.Text =
-                "Tidak ada target"
-
-            print(
-                "[TARGET HOP] Tidak ada target."
-            )
-
-        end
+        )
 
     end
 )
@@ -905,8 +865,7 @@ Players.PlayerAdded:Connect(
             return
         end
 
-        -- Tunggu sebentar agar leaderstats
-        -- sempat dibuat
+        -- Tunggu data player
         task.wait(0.5)
 
         if HopRunning then
@@ -921,16 +880,16 @@ Players.PlayerAdded:Connect(
 
             print("==========================================")
             print(
-                "[TARGET HOP] TARGET USER JOINED:",
+                "[TARGET HOP] USERNAME TARGET JOINED:",
                 Player.Name
             )
             print("==========================================")
 
             Status.Text =
-                "USERNAME TARGET\n"
+                "TARGET USER\n"
                 .. Player.Name
 
-            ServerHop(
+            TriggerTargetHop(
                 Player,
                 "USERNAME"
             )
@@ -944,9 +903,7 @@ Players.PlayerAdded:Connect(
         --==================================================
 
         local Speed =
-            GetPlayerSpeed(
-                Player
-            )
+            GetPlayerSpeed(Player)
 
         if Speed and Speed > SPEED_LIMIT then
 
@@ -962,16 +919,16 @@ Players.PlayerAdded:Connect(
             print("==========================================")
 
             Status.Text =
-                "SPEED TARGET\n"
+                "TARGET SPEED\n"
                 .. Player.Name
                 .. " | "
                 .. FormatNumber(
                     Speed
                 )
 
-            ServerHop(
+            TriggerTargetHop(
                 Player,
-                Speed
+                "SPEED"
             )
 
         end
@@ -1003,36 +960,22 @@ task.spawn(
                     if Trigger == "USERNAME" then
 
                         Status.Text =
-                            "USERNAME TARGET\n"
+                            "TARGET USER\n"
                             .. Player.Name
-
-                        print(
-                            "[TARGET HOP] USERNAME:",
-                            Player.Name
-                        )
 
                     else
 
                         Status.Text =
-                            "SPEED TARGET\n"
+                            "TARGET SPEED\n"
                             .. Player.Name
                             .. " | "
                             .. FormatNumber(
                                 Speed
                             )
 
-                        print(
-                            "[TARGET HOP] SPEED:",
-                            Player.Name,
-                            "|",
-                            FormatNumber(
-                                Speed
-                            )
-                        )
-
                     end
 
-                    ServerHop(
+                    TriggerTargetHop(
                         Player,
                         Trigger
                     )
@@ -1061,7 +1004,9 @@ task.spawn(
 --==================================================
 
 print("==========================================")
-print(" TARGET PLAYER / SPEED SERVER HOP")
+print(
+    " TARGET PLAYER / SPEED SERVER HOP"
+)
 print("==========================================")
 
 print(
@@ -1093,6 +1038,11 @@ print(
 print(
     "[TARGET HOP] Destination:",
     "SERVER TERSEPI"
+)
+
+print(
+    "[TARGET HOP] Button:",
+    "HOP SERVER SEPI"
 )
 
 print(
