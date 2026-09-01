@@ -1,4 +1,4 @@
---FUSEV9
+--FUSEV10
 --==================================================
 -- AUTO FUSE PET
 --
@@ -24,7 +24,13 @@
 -- -> FLY START AREA
 -- -> FLY EGG
 -- -> CARRY
--- -> RETURN START
+-- -> WAIT ChildAdded
+-- -> JIKA TIDAK ADA CHILD ADDED:
+--      -> FLY KE EGG LAGI
+--      -> CARRY LAGI
+--      -> CEK ChildAdded LAGI
+-- -> JIKA BERHASIL:
+--      -> RETURN START
 -- -> FLY PLOT
 -- -> PLACE
 -- -> NO HATCH
@@ -123,7 +129,7 @@ local FUSED_EGG_WAIT_TIMEOUT = 10
 --==============================
 
 local FLY_SPEED = 800
-local REACH_DISTANCE = 5
+local REACH_DISTANCE = 3
 local FLY_UPDATE_DELAY = 0.03
 local FLY_MAX_TIME = 120
 
@@ -137,6 +143,9 @@ local EGG_FOLDER_NAME = "AreaEggSlotsClient"
 
 local AFTER_CARRY_START_DELAY = 0.2
 local CARRY_DELAY = 0
+
+-- WAIT VERIFICATION CARRY
+local FIELD_EGG_CARRY_VERIFY_TIME = 1
 
 local WAIT_AFTER_RETURN = 3
 local TOOL_CHECK_DELAY = 0.2
@@ -160,8 +169,8 @@ local MAX_PLOT = 8
 -- NORMAL FIELD EGG FILTER
 --==============================
 
-local NORMAL_MIN_SCALE = 13
-local NORMAL_MIN_PIVOT_X = 2600
+local NORMAL_MIN_SCALE = 1
+local NORMAL_MIN_PIVOT_X = 2800
 
 
 --==============================
@@ -2012,7 +2021,6 @@ local function GetBestEgg()
     local BestNormalScale = -math.huge
     local BestNormalPivotX = -math.huge
 
-    -- MENCEGAH OBJECT YANG SAMA TERPROSES 2X
     local Seen = {}
 
 
@@ -2043,7 +2051,6 @@ local function GetBestEgg()
             )
 
 
-        -- PRIORITAS #1: OBJECT YANG MEMILIKI HIGHLIGHT
         if Highlight then
 
             if Scale > BestHighlightScale
@@ -2059,7 +2066,6 @@ local function GetBestEgg()
             end
 
 
-        -- PRIORITAS #2: NORMAL FIELD EGG
         elseif Scale > NORMAL_MIN_SCALE
             and PivotX > NORMAL_MIN_PIVOT_X then
 
@@ -2081,7 +2087,7 @@ local function GetBestEgg()
 
 
     --==================================================
-    -- #1 SCAN AreaEggSlotsClient
+    -- SCAN AreaEggSlotsClient
     --==================================================
 
     if EggFolder then
@@ -2107,14 +2113,7 @@ local function GetBestEgg()
 
 
     --==================================================
-    -- #2 SCAN CHILD LANGSUNG DI WORKSPACE
-    --
-    -- FORMAT TARGET:
-    -- Workspace
-    -- └── RandomString
-    --     └── Highlight
-    --
-    -- BUKAN scan seluruh Workspace:GetDescendants()
+    -- SCAN CHILD LANGSUNG DI WORKSPACE
     --==================================================
 
     for _, Object in ipairs(
@@ -2192,8 +2191,20 @@ local function GetBestEgg()
 
 end
 
+
 --==================================================
 -- CARRY FIELD EGG
+--
+-- VERIFY DENGAN ChildAdded
+--
+-- PENTING:
+-- Connection dipasang SEBELUM InvokeServer.
+--
+-- Jika dalam 1 detik tidak ada child baru:
+-- return false
+--
+-- RETRY DILAKUKAN DARI FLY KE EGG,
+-- BUKAN CARRY LANGSUNG.
 --==================================================
 
 local function CarryEgg(
@@ -2212,6 +2223,25 @@ local function CarryEgg(
         Egg.Name
 
 
+    local CharacterFolder =
+        Workspace:FindFirstChild(
+            LocalPlayer.Name
+        )
+
+
+    if not CharacterFolder then
+
+        warn(
+            "[AUTO EGG] workspace.",
+            LocalPlayer.Name,
+            "TIDAK DITEMUKAN"
+        )
+
+        return false
+
+    end
+
+
     print(
         "[AUTO EGG] CARRY:",
         Egg.Name
@@ -2222,6 +2252,36 @@ local function CarryEgg(
         UID
     )
 
+
+    --==============================================
+    -- CHILD ADDED EVENT
+    --==============================================
+
+    local AddedChild = nil
+
+
+    local Connection =
+        CharacterFolder.ChildAdded:Connect(
+            function(Child)
+
+                AddedChild =
+                    Child
+
+
+                print(
+                    "[AUTO EGG] CHILD ADDED:",
+                    Child.Name,
+                    "| CLASS:",
+                    Child.ClassName
+                )
+
+            end
+        )
+
+
+    --==============================================
+    -- CARRY REMOTE
+    --==============================================
 
     local Success,
         Result =
@@ -2245,15 +2305,82 @@ local function CarryEgg(
     )
 
 
-    if not Success
-        or Result == false then
+    --==============================================
+    -- WAIT ChildAdded
+    --==============================================
 
-        return false
+    local StartTime =
+        tick()
+
+
+    while tick() - StartTime <
+        FIELD_EGG_CARRY_VERIFY_TIME do
+
+
+        if AddedChild then
+            break
+        end
+
+
+        task.wait()
 
     end
 
 
-    return true
+    --==============================================
+    -- DISCONNECT EVENT
+    --==============================================
+
+    if Connection then
+
+        Connection:Disconnect()
+
+        Connection = nil
+
+    end
+
+
+    --==============================================
+    -- VERIFY
+    --==============================================
+
+    if AddedChild then
+
+        print(
+            "=========================================="
+        )
+
+        print(
+            "[AUTO EGG] CARRY VERIFIED"
+        )
+
+        print(
+            "[AUTO EGG] NEW CHILD:",
+            AddedChild.Name
+        )
+
+        print(
+            "=========================================="
+        )
+
+
+        return true
+
+    end
+
+
+    warn(
+        "[AUTO EGG] CARRY NOT VERIFIED"
+    )
+
+    warn(
+        "[AUTO EGG] NO ChildAdded WITHIN",
+        FIELD_EGG_CARRY_VERIFY_TIME,
+        "SEC"
+    )
+
+
+    return false
 
 end
 
@@ -2656,6 +2783,7 @@ local function TriggerNearbyPrompts()
 
     end
 
+
 end
 
 
@@ -2773,12 +2901,6 @@ end
 -- HATCH ALL
 --
 -- SNAPSHOT 1X
---
--- DIPANGGIL HANYA SEBELUM
--- INVENTORY EGG PROCESS.
---
--- TIDAK DIPANGGIL SETELAH FUSE.
--- TIDAK DIPANGGIL SETELAH FIELD EGG.
 --==================================================
 
 local function HatchAllPlacedEggs()
@@ -3213,10 +3335,6 @@ local function TryFuseCycle()
     end
 
 
-    --==============================================
-    -- EXIT TREADMILL
-    --==============================================
-
     if TreadmillRunning then
 
         if not ExitTreadmill() then
@@ -3225,10 +3343,6 @@ local function TryFuseCycle()
 
     end
 
-
-    --==============================================
-    -- LOAD PET 1
-    --==============================================
 
     if not LoadOnePet(
         Pet1,
@@ -3240,10 +3354,6 @@ local function TryFuseCycle()
     end
 
 
-    --==============================================
-    -- LOAD PET 2
-    --==============================================
-
     if not LoadOnePet(
         Pet2,
         2
@@ -3253,10 +3363,6 @@ local function TryFuseCycle()
 
     end
 
-
-    --==============================================
-    -- LOAD PET 3
-    --==============================================
 
     if not LoadOnePet(
         Pet3,
@@ -3268,27 +3374,15 @@ local function TryFuseCycle()
     end
 
 
-    --==============================================
-    -- BEGIN
-    --==============================================
-
     if not StartFuse() then
         return false
     end
 
 
-    --==============================================
-    -- FINISH
-    --==============================================
-
     if not FinishFuse() then
         return false
     end
 
-
-    --==============================================
-    -- WAIT RESULT
-    --==============================================
 
     local FusedEgg =
         WaitForFusedEggEquipped(
@@ -3300,10 +3394,6 @@ local function TryFuseCycle()
         return false
     end
 
-
-    --==============================================
-    -- PLACE
-    --==============================================
 
     if not PlaceFusedEgg(
         FusedEgg
@@ -3317,10 +3407,6 @@ local function TryFuseCycle()
 
     end
 
-
-    --==============================================
-    -- NO HATCH
-    --==============================================
 
     print(
         "[FUSE] HATCH SKIPPED"
@@ -3339,8 +3425,7 @@ end
 --==================================================
 -- PROCESS FIELD EGG
 --
--- IMPORTANT:
--- TIDAK HATCH DI SINI
+-- CARRY RETRY DIMULAI DARI FLY LAGI
 --==================================================
 
 local function ProcessFieldEgg(
@@ -3451,39 +3536,147 @@ local function ProcessFieldEgg(
     end
 
 
-    --==============================================
-    -- FLY EGG
-    --==============================================
+    --==================================================
+    -- CARRY LOOP
+    --
+    -- SETIAP GAGAL:
+    -- -> TUNGGU
+    -- -> FLY KE EGG LAGI
+    -- -> CARRY
+    --
+    -- TIDAK ADA CARRY LANGSUNG DARI POSISI LAMA
+    --==================================================
 
-    if not FlyToObject(
-        Egg,
-        REACH_DISTANCE,
-        "FIELD:EGG"
-    ) then
-
-        return false
-
-    end
-
-
-    --==============================================
-    -- CARRY
-    --==============================================
-
-    task.wait(
-        AFTER_CARRY_START_DELAY
-    )
+    local CarrySuccess = false
+    local CarryAttempt = 0
 
 
-    if not CarryEgg(
-        Egg
-    ) then
+    while not CarrySuccess do
 
-        warn(
-            "[FIELD EGG] CARRY FAILED"
+        CarryAttempt += 1
+
+
+        print(
+            "=========================================="
         )
 
-        return false
+        print(
+            "[FIELD EGG] CARRY ATTEMPT:",
+            CarryAttempt
+        )
+
+        print(
+            "=========================================="
+        )
+
+
+        --==========================================
+        -- EGG MASIH ADA?
+        --==========================================
+
+        if not Egg
+            or not Egg.Parent then
+
+            warn(
+                "[FIELD EGG] EGG HILANG SAAT RETRY"
+            )
+
+            return false
+
+        end
+
+
+        --==========================================
+        -- FLY KE EGG
+        --
+        -- INI AKAN DIULANG SETIAP RETRY
+        --==========================================
+
+        print(
+            "[FIELD EGG] FLY TO EGG"
+        )
+
+
+        if not FlyToObject(
+            Egg,
+            REACH_DISTANCE,
+            "FIELD:EGG_ATTEMPT_" .. CarryAttempt
+        ) then
+
+            warn(
+                "[FIELD EGG] GAGAL FLY KE EGG"
+            )
+
+            return false
+
+        end
+
+
+        --==========================================
+        -- CARRY
+        --
+        -- CarryEgg memasang ChildAdded
+        -- SEBELUM remote dipanggil.
+        --==========================================
+
+        CarrySuccess =
+            CarryEgg(
+                Egg
+            )
+
+
+        --==========================================
+        -- SUCCESS
+        --==========================================
+
+        if CarrySuccess then
+
+            print(
+                "=========================================="
+            )
+
+            print(
+                "[FIELD EGG] CARRY VERIFIED!"
+            )
+
+            print(
+                "[FIELD EGG] TOTAL ATTEMPT:",
+                CarryAttempt
+            )
+
+            print(
+                "[FIELD EGG] SEKARANG RETURN START"
+            )
+
+            print(
+                "=========================================="
+
+            )
+
+            break
+
+        end
+
+
+        --==========================================
+        -- FAILED
+        --
+        -- TIDAK CARRY LANGSUNG
+        -- LOOP AKAN FLY LAGI
+        --==========================================
+
+        warn(
+            "[FIELD EGG] CARRY BELUM VERIFIED"
+        )
+
+        warn(
+            "[FIELD EGG] RETRY DIMULAI DARI FLY"
+        )
+
+
+        task.wait(
+            0.2
+        )
 
     end
 
@@ -3495,6 +3688,9 @@ local function ProcessFieldEgg(
 
     --==============================================
     -- RETURN START
+    --
+    -- HANYA SAMPAI SINI JIKA ChildAdded
+    -- SUDAH TERDETEKSI
     --==============================================
 
     if not AutoFlyToPosition(
@@ -4261,19 +4457,13 @@ end
 --==================================================
 -- PROCESS INVENTORY EGGS
 --
--- FLOW:
---
 -- SNAPSHOT INVENTORY
 -- ->
 -- HATCH EXISTING PLACED EGGS
 -- ->
 -- PROCESS SNAPSHOT
--- ->
--- EQUIP
--- ->
--- PLACE
 --
--- HATCH TIDAK DIULANG SETELAH SETIAP PLACE
+-- HATCH TIDAK DIULANG SETELAH PLACE
 --==================================================
 
 local function ProcessInventoryEggs()
@@ -4318,8 +4508,6 @@ local function ProcessInventoryEggs()
 
     --==============================================
     -- HATCH EXISTING PLACED EGG
-    --
-    -- INI SATU-SATUNYA HATCH DI MAIN FLOW
     --==============================================
 
     print(
@@ -4473,11 +4661,12 @@ task.spawn(function()
     )
 
     print(
-        " AUTO FUSE PET V6"
+        " AUTO FUSE PET V9"
     )
 
     print(
         "=========================================="
+
     )
 
     print(
@@ -4490,6 +4679,14 @@ task.spawn(function()
 
     print(
         " 2. FIELD EGG"
+    )
+
+    print(
+        "    -> CARRY ChildAdded VERIFY"
+    )
+
+    print(
+        "    -> RETRY DARI FLY"
     )
 
     print(
@@ -4530,6 +4727,12 @@ task.spawn(function()
     print(
         "[MAIN] FLY SPEED:",
         FLY_SPEED
+    )
+
+    print(
+        "[MAIN] FIELD CARRY VERIFY:",
+        FIELD_EGG_CARRY_VERIFY_TIME,
+        "SEC"
     )
 
     print(
