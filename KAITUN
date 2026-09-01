@@ -123,7 +123,7 @@ local FUSED_EGG_WAIT_TIMEOUT = 10
 --==============================
 
 local FLY_SPEED = 800
-local REACH_DISTANCE = 5
+local REACH_DISTANCE = 2
 local FLY_UPDATE_DELAY = 0.03
 local FLY_MAX_TIME = 120
 
