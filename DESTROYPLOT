@@ -1,21 +1,59 @@
--- Destroy __ClientTreadmillRenders
+--==================================================
+-- DESTROY __ClientTreadmillRenders
+--==================================================
+
 local treadmillRenders = workspace:FindFirstChild("__ClientTreadmillRenders")
+
 if treadmillRenders then
     treadmillRenders:Destroy()
 end
 
 
--- Destroy semua Child di semua ClientRenderedAssets
-for _, obj in ipairs(workspace:GetChildren()) do
-    if obj.Name == "ClientRenderedAssets" then
-        for _, child in ipairs(obj:GetChildren()) do
-            child:Destroy()
+--==================================================
+-- CLIENTRENDEREDASSETS
+-- Destroy SEMUA PART di dalam ClientRenderedAssets
+-- termasuk PART yang baru ditambahkan
+--==================================================
+
+local function destroyParts(obj)
+    for _, descendant in ipairs(obj:GetDescendants()) do
+        if descendant:IsA("BasePart") then
+            descendant:Destroy()
         end
     end
 end
 
+local function setupClientRenderedAssets(folder)
+    -- Destroy Part yang sudah ada
+    destroyParts(folder)
 
--- Destroy semua Child di Stands.Models
+    -- Destroy Part yang baru ditambahkan
+    folder.DescendantAdded:Connect(function(descendant)
+        if descendant:IsA("BasePart") then
+            descendant:Destroy()
+        end
+    end)
+end
+
+-- ClientRenderedAssets yang sudah ada
+for _, obj in ipairs(workspace:GetChildren()) do
+    if obj.Name == "ClientRenderedAssets" then
+        setupClientRenderedAssets(obj)
+    end
+end
+
+-- ClientRenderedAssets yang baru muncul
+workspace.ChildAdded:Connect(function(obj)
+    if obj.Name == "ClientRenderedAssets" then
+        setupClientRenderedAssets(obj)
+    end
+end)
+
+
+--==================================================
+-- DESTROY SEMUA CHILD DI Stands.Models
+--==================================================
+
 local stands = workspace:FindFirstChild("Stands")
 local models = stands and stands:FindFirstChild("Models")
 
@@ -23,4 +61,18 @@ if models then
     for _, child in ipairs(models:GetChildren()) do
         child:Destroy()
     end
+end
+
+
+--==================================================
+-- DESTROY GuardAreas
+-- workspace.__OBJECTS.Areas.GuardAreas
+--==================================================
+
+local objects = workspace:FindFirstChild("__OBJECTS")
+local areas = objects and objects:FindFirstChild("Areas")
+local guardAreas = areas and areas:FindFirstChild("GuardAreas")
+
+if guardAreas then
+    guardAreas:Destroy()
 end
