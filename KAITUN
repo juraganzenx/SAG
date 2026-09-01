@@ -160,8 +160,8 @@ local MAX_PLOT = 8
 -- NORMAL FIELD EGG FILTER
 --==============================
 
-local NORMAL_MIN_SCALE = 0.1
-local NORMAL_MIN_PIVOT_X = 4300
+local NORMAL_MIN_SCALE = 13
+local NORMAL_MIN_PIVOT_X = 3500
 
 
 --==============================
