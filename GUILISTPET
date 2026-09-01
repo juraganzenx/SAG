@@ -1,5 +1,5 @@
---==================================================
--- SIMPLE MY DATA VIEWER
+--======================A============================
+-- SIMPLE TOTAL INCOME VIEWER
 --==================================================
 
 local Players = game:GetService("Players")
@@ -26,75 +26,59 @@ Gui.Name = "SimpleContentViewer"
 Gui.ResetOnSpawn = false
 Gui.Parent = Player.PlayerGui
 
+--==================================================
+-- MAIN
+--==================================================
+
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 380, 0, 320)
-Main.Position = UDim2.new(0.5, -190, 0.5, -160)
-Main.BackgroundColor3 = Color3.fromRGB(25,25,25)
+
+Main.Size = UDim2.new(0, 230, 0, 55)
+
+-- KIRI ATAS, TAPI TIDAK TERLALU ATAS
+Main.Position = UDim2.new(0, 15, 0, 80)
+
+Main.BackgroundColor3 =
+    Color3.fromRGB(25, 25, 25)
+
 Main.BorderSizePixel = 0
+
 Main.Parent = Gui
 
 local Corner = Instance.new("UICorner")
-Corner.CornerRadius = UDim.new(0,6)
+Corner.CornerRadius = UDim.new(0, 6)
 Corner.Parent = Main
 
 --==================================================
--- TITLE
---==================================================
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1,-20,0,30)
-Title.Position = UDim2.new(0,10,0,5)
-Title.BackgroundTransparency = 1
-Title.Text = "MY DATA [0]"
-Title.TextColor3 = Color3.new(1,1,1)
-Title.TextSize = 15
-Title.Font = Enum.Font.GothamBold
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Main
-
---==================================================
--- TOTAL
+-- TOTAL INCOME
 --==================================================
 
 local TotalLabel = Instance.new("TextLabel")
-TotalLabel.Size = UDim2.new(1,-20,0,25)
-TotalLabel.Position = UDim2.new(0,10,0,32)
+
+TotalLabel.Size =
+    UDim2.new(1, -20, 1, 0)
+
+TotalLabel.Position =
+    UDim2.new(0, 10, 0, 0)
+
 TotalLabel.BackgroundTransparency = 1
-TotalLabel.Text = "TOTAL: $0/s"
-TotalLabel.TextColor3 = Color3.fromRGB(100,255,100)
-TotalLabel.TextSize = 13
-TotalLabel.Font = Enum.Font.GothamBold
-TotalLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+TotalLabel.Text = "TOTAL INCOME: $0/s"
+
+TotalLabel.TextColor3 =
+    Color3.fromRGB(100, 255, 100)
+
+TotalLabel.TextSize = 15
+
+TotalLabel.Font =
+    Enum.Font.GothamBold
+
+TotalLabel.TextXAlignment =
+    Enum.TextXAlignment.Left
+
+TotalLabel.TextYAlignment =
+    Enum.TextYAlignment.Center
+
 TotalLabel.Parent = Main
-
---==================================================
--- LIST
---==================================================
-
-local List = Instance.new("ScrollingFrame")
-List.Size = UDim2.new(1,-20,1,-67)
-List.Position = UDim2.new(0,10,0,62)
-List.BackgroundColor3 = Color3.fromRGB(15,15,15)
-List.BorderSizePixel = 0
-List.ScrollBarThickness = 4
-List.CanvasSize = UDim2.new(0,0,0,0)
-List.Parent = Main
-
-local ListCorner = Instance.new("UICorner")
-ListCorner.CornerRadius = UDim.new(0,5)
-ListCorner.Parent = List
-
-local Padding = Instance.new("UIPadding")
-Padding.PaddingTop = UDim.new(0,5)
-Padding.PaddingBottom = UDim.new(0,5)
-Padding.PaddingLeft = UDim.new(0,7)
-Padding.PaddingRight = UDim.new(0,7)
-Padding.Parent = List
-
-local Layout = Instance.new("UIListLayout")
-Layout.Padding = UDim.new(0,2)
-Layout.SortOrder = Enum.SortOrder.LayoutOrder
-Layout.Parent = List
 
 --==================================================
 -- GET TEXT
@@ -281,10 +265,10 @@ local function GetGroup(Object, Data)
 end
 
 --==================================================
--- FIND MY GROUPS
+-- FIND MY TOTAL INCOME
 --==================================================
 
-local function FindMyGroups()
+local function FindMyTotalIncome()
 
     local Assets =
         workspace:FindFirstChild(
@@ -292,12 +276,10 @@ local function FindMyGroups()
         )
 
     if not Assets then
-        return {}, 0
+        return 0
     end
 
-    local Groups = {}
     local GroupMap = {}
-
     local TotalPerSecond = 0
 
     --==================================================
@@ -308,7 +290,7 @@ local function FindMyGroups()
         Assets:GetChildren()
     ) do
 
-        -- Asset harus memiliki UserId kita
+        -- Hanya asset milik kita
         if string.find(
             Asset.Name,
             UserId,
@@ -321,7 +303,6 @@ local function FindMyGroups()
 
             if Data then
 
-                -- Scan semua TextLabel
                 for _, Object in ipairs(
                     Data:GetDescendants()
                 ) do
@@ -333,7 +314,7 @@ local function FindMyGroups()
                         local Name =
                             Object.Name:lower()
 
-                        -- Hanya mulai dari DisplayName
+                        -- Mulai dari DisplayName
                         if Name == "displayname" then
 
                             local Group =
@@ -347,17 +328,10 @@ local function FindMyGroups()
                                 local Key =
                                     Group:GetFullName()
 
+                                -- Jangan hitung group yang sama 2x
                                 if not GroupMap[Key] then
 
-                                    --==================================================
-                                    -- AMBIL 3 DATA
-                                    --==================================================
-
-                                    local DisplayName =
-                                        FindText(
-                                            Group,
-                                            "DisplayName"
-                                        )
+                                    GroupMap[Key] = true
 
                                     local PerSecond =
                                         FindText(
@@ -365,33 +339,12 @@ local function FindMyGroups()
                                             "PerSecond"
                                         )
 
-                                    local Odds =
-                                        FindText(
-                                            Group,
-                                            "Odds"
-                                        )
-
-                                    local PerSecondValue =
+                                    local Value =
                                         ParsePerSecond(
                                             PerSecond
                                         )
 
-                                    GroupMap[Key] = {
-                                        Group = Group,
-                                        DisplayName = DisplayName,
-                                        PerSecond = PerSecond,
-                                        Odds = Odds,
-                                        PerSecondValue =
-                                            PerSecondValue
-                                    }
-
-                                    table.insert(
-                                        Groups,
-                                        GroupMap[Key]
-                                    )
-
-                                    TotalPerSecond +=
-                                        PerSecondValue
+                                    TotalPerSecond += Value
                                 end
                             end
                         end
@@ -401,47 +354,7 @@ local function FindMyGroups()
         end
     end
 
-    return Groups, TotalPerSecond
-end
-
---==================================================
--- CREATE ROW
---==================================================
-
-local function CreateRow(Data, Index)
-
-    local Row = Instance.new("TextLabel")
-
-    Row.Size =
-        UDim2.new(1,0,0,24)
-
-    Row.BackgroundTransparency = 1
-
-    Row.Text =
-        tostring(Index) ..
-        ". " ..
-        Data.DisplayName ..
-        " " ..
-        Data.PerSecond ..
-        " [" ..
-        Data.Odds ..
-        "]"
-
-    Row.TextColor3 =
-        Color3.fromRGB(220,220,220)
-
-    Row.TextSize = 13
-
-    Row.Font =
-        Enum.Font.Gotham
-
-    Row.TextXAlignment =
-        Enum.TextXAlignment.Left
-
-    Row.TextTruncate =
-        Enum.TextTruncate.AtEnd
-
-    Row.Parent = List
+    return TotalPerSecond
 end
 
 --==================================================
@@ -450,72 +363,13 @@ end
 
 local function Refresh()
 
-    -- Clear
-    for _, Object in ipairs(
-        List:GetChildren()
-    ) do
-
-        if Object:IsA("TextLabel") then
-            Object:Destroy()
-        end
-
-    end
-
-    local Groups, Total =
-        FindMyGroups()
-
-    --==================================================
-    -- HEADER
-    --==================================================
-
-    Title.Text =
-        "MY DATA [" ..
-        #Groups ..
-        "]"
+    local Total =
+        FindMyTotalIncome()
 
     TotalLabel.Text =
-        "TOTAL: " ..
+        "TOTAL INCOME: " ..
         FormatMoney(Total)
 
-    --==================================================
-    -- SORT HIGHEST PER SECOND
-    --==================================================
-
-    table.sort(
-        Groups,
-        function(A, B)
-
-            return
-                A.PerSecondValue >
-                B.PerSecondValue
-
-        end
-    )
-
-    --==================================================
-    -- CREATE ROWS
-    --==================================================
-
-    for Index, Data in ipairs(Groups) do
-
-        CreateRow(
-            Data,
-            Index
-        )
-
-    end
-
-    task.defer(function()
-
-        List.CanvasSize =
-            UDim2.new(
-                0,
-                0,
-                0,
-                Layout.AbsoluteContentSize.Y + 10
-            )
-
-    end)
 end
 
 --==================================================
@@ -528,7 +382,8 @@ task.spawn(function()
 
         pcall(Refresh)
 
-        task.wait(10)
+        -- Realtime refresh
+        task.wait(0.5)
 
     end
 
@@ -538,11 +393,9 @@ end)
 -- START
 --==================================================
 
-print(
-    "[MY DATA] Started"
-)
+print("[TOTAL INCOME] Started")
 
 print(
-    "[MY DATA] UserId:",
+    "[TOTAL INCOME] UserId:",
     UserId
 )
