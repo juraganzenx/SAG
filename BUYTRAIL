@@ -1,0 +1,19 @@
+local trails = {
+    "GreyTrail",
+    "GreenTrail",
+    "BlueTrail",
+    "PurpleTrail",
+    "GoldenTrail",
+    "RedTrail",
+    "GalaxyTrail",
+    "SecretTrail",
+    "EternalTrail",
+    "DivineTrail"
+}
+
+while true do
+    for _, trail in ipairs(trails) do
+        game:GetService("ReplicatedStorage").Packages.Networking["RF/Trailwear/AskPurchase"]:InvokeServer(trail)
+    end
+    task.wait(30)
+end
