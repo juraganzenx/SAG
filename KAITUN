@@ -1,4 +1,4 @@
---FUSEV7
+--FUSEV8
 --==================================================
 -- AUTO FUSE PET
 --
@@ -2004,132 +2004,74 @@ local function GetBestEgg()
         )
 
 
-    if not EggFolder then
-
-        warn(
-            "[AUTO EGG] EGG FOLDER TIDAK DITEMUKAN"
-        )
-
-        return nil
-
-    end
-
-
     local BestHighlight = nil
-
-    local BestHighlightScale =
-        -math.huge
-
-    local BestHighlightPivotX =
-        -math.huge
-
+    local BestHighlightScale = -math.huge
+    local BestHighlightPivotX = -math.huge
 
     local BestNormal = nil
+    local BestNormalScale = -math.huge
+    local BestNormalPivotX = -math.huge
 
-    local BestNormalScale =
-        -math.huge
-
-    local BestNormalPivotX =
-        -math.huge
-
-
-    for _, Object in ipairs(
-        EggFolder:GetDescendants()
-    ) do
+    -- MENCEGAH OBJECT YANG SAMA TERPROSES 2X
+    local Seen = {}
 
 
-        if Object:IsA("Model") then
+    local function ProcessEgg(Object)
+
+        if not Object
+            or not Object:IsA("Model")
+            or Seen[Object] then
+            return
+        end
+
+        Seen[Object] = true
 
 
-            local Scale =
-                GetEggScale(
-                    Object
-                )
+        local Scale =
+            GetEggScale(
+                Object
+            )
+
+        local PivotX =
+            GetEggWorldPivotX(
+                Object
+            )
+
+        local Highlight =
+            HasHighlight(
+                Object
+            )
 
 
-            local PivotX =
-                GetEggWorldPivotX(
-                    Object
-                )
+        -- PRIORITAS #1: OBJECT YANG MEMILIKI HIGHLIGHT
+        if Highlight then
+
+            if Scale > BestHighlightScale
+                or (
+                    Scale == BestHighlightScale
+                    and PivotX > BestHighlightPivotX
+                ) then
+
+                BestHighlight = Object
+                BestHighlightScale = Scale
+                BestHighlightPivotX = PivotX
+
+            end
 
 
-            local Highlight =
-                HasHighlight(
-                    Object
-                )
+        -- PRIORITAS #2: NORMAL FIELD EGG
+        elseif Scale > NORMAL_MIN_SCALE
+            and PivotX > NORMAL_MIN_PIVOT_X then
 
+            if Scale > BestNormalScale
+                or (
+                    Scale == BestNormalScale
+                    and PivotX > BestNormalPivotX
+                ) then
 
-            if Highlight then
-
-
-                if Scale >
-                    BestHighlightScale then
-
-
-                    BestHighlight =
-                        Object
-
-                    BestHighlightScale =
-                        Scale
-
-                    BestHighlightPivotX =
-                        PivotX
-
-
-                elseif Scale ==
-                    BestHighlightScale
-                    and PivotX >
-                        BestHighlightPivotX then
-
-
-                    BestHighlight =
-                        Object
-
-                    BestHighlightScale =
-                        Scale
-
-                    BestHighlightPivotX =
-                        PivotX
-
-                end
-
-
-            elseif Scale >
-                    NORMAL_MIN_SCALE
-                and PivotX >
-                    NORMAL_MIN_PIVOT_X then
-
-
-                if Scale >
-                    BestNormalScale then
-
-
-                    BestNormal =
-                        Object
-
-                    BestNormalScale =
-                        Scale
-
-                    BestNormalPivotX =
-                        PivotX
-
-
-                elseif Scale ==
-                    BestNormalScale
-                    and PivotX >
-                        BestNormalPivotX then
-
-
-                    BestNormal =
-                        Object
-
-                    BestNormalScale =
-                        Scale
-
-                    BestNormalPivotX =
-                        PivotX
-
-                end
+                BestNormal = Object
+                BestNormalScale = Scale
+                BestNormalPivotX = PivotX
 
             end
 
@@ -2138,11 +2080,81 @@ local function GetBestEgg()
     end
 
 
+    --==================================================
+    -- #1 SCAN AreaEggSlotsClient
+    --==================================================
+
+    if EggFolder then
+
+        for _, Object in ipairs(
+            EggFolder:GetDescendants()
+        ) do
+
+            ProcessEgg(
+                Object
+            )
+
+        end
+
+    else
+
+        warn(
+            "[AUTO EGG] EGG FOLDER TIDAK DITEMUKAN:",
+            EGG_FOLDER_NAME
+        )
+
+    end
+
+
+    --==================================================
+    -- #2 SCAN CHILD LANGSUNG DI WORKSPACE
+    --
+    -- FORMAT TARGET:
+    -- Workspace
+    -- └── RandomString
+    --     └── Highlight
+    --
+    -- BUKAN scan seluruh Workspace:GetDescendants()
+    --==================================================
+
+    for _, Object in ipairs(
+        Workspace:GetChildren()
+    ) do
+
+        if Object ~= EggFolder
+            and Object:IsA("Model") then
+
+            local DirectHighlight =
+                Object:FindFirstChildOfClass(
+                    "Highlight"
+                )
+
+            if DirectHighlight
+                and DirectHighlight.Name
+                    ~= "MonsterParasiteHighlight" then
+
+                ProcessEgg(
+                    Object
+                )
+
+            end
+
+        end
+
+    end
+
+
+    --==================================================
+    -- RESULT
+    --==================================================
+
     if BestHighlight then
 
         print(
             "[AUTO EGG] BEST HIGHLIGHT:",
             BestHighlight.Name,
+            "| PATH:",
+            BestHighlight:GetFullName(),
             "| SCALE:",
             BestHighlightScale,
             "| X:",
@@ -2159,6 +2171,8 @@ local function GetBestEgg()
         print(
             "[AUTO EGG] BEST NORMAL:",
             BestNormal.Name,
+            "| PATH:",
+            BestNormal:GetFullName(),
             "| SCALE:",
             BestNormalScale,
             "| X:",
@@ -2174,11 +2188,9 @@ local function GetBestEgg()
         "[AUTO EGG] NO VALID FIELD EGG"
     )
 
-
     return nil
 
 end
-
 
 --==================================================
 -- CARRY FIELD EGG
