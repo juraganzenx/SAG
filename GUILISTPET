@@ -1,0 +1,548 @@
+--==================================================
+-- SIMPLE MY DATA VIEWER
+--==================================================
+
+local Players = game:GetService("Players")
+
+local Player = Players.LocalPlayer
+local UserId = tostring(Player.UserId)
+
+--==================================================
+-- REMOVE OLD GUI
+--==================================================
+
+local Old = Player.PlayerGui:FindFirstChild("SimpleContentViewer")
+
+if Old then
+    Old:Destroy()
+end
+
+--==================================================
+-- GUI
+--==================================================
+
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "SimpleContentViewer"
+Gui.ResetOnSpawn = false
+Gui.Parent = Player.PlayerGui
+
+local Main = Instance.new("Frame")
+Main.Size = UDim2.new(0, 380, 0, 320)
+Main.Position = UDim2.new(0.5, -190, 0.5, -160)
+Main.BackgroundColor3 = Color3.fromRGB(25,25,25)
+Main.BorderSizePixel = 0
+Main.Parent = Gui
+
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0,6)
+Corner.Parent = Main
+
+--==================================================
+-- TITLE
+--==================================================
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1,-20,0,30)
+Title.Position = UDim2.new(0,10,0,5)
+Title.BackgroundTransparency = 1
+Title.Text = "MY DATA [0]"
+Title.TextColor3 = Color3.new(1,1,1)
+Title.TextSize = 15
+Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = Main
+
+--==================================================
+-- TOTAL
+--==================================================
+
+local TotalLabel = Instance.new("TextLabel")
+TotalLabel.Size = UDim2.new(1,-20,0,25)
+TotalLabel.Position = UDim2.new(0,10,0,32)
+TotalLabel.BackgroundTransparency = 1
+TotalLabel.Text = "TOTAL: $0/s"
+TotalLabel.TextColor3 = Color3.fromRGB(100,255,100)
+TotalLabel.TextSize = 13
+TotalLabel.Font = Enum.Font.GothamBold
+TotalLabel.TextXAlignment = Enum.TextXAlignment.Left
+TotalLabel.Parent = Main
+
+--==================================================
+-- LIST
+--==================================================
+
+local List = Instance.new("ScrollingFrame")
+List.Size = UDim2.new(1,-20,1,-67)
+List.Position = UDim2.new(0,10,0,62)
+List.BackgroundColor3 = Color3.fromRGB(15,15,15)
+List.BorderSizePixel = 0
+List.ScrollBarThickness = 4
+List.CanvasSize = UDim2.new(0,0,0,0)
+List.Parent = Main
+
+local ListCorner = Instance.new("UICorner")
+ListCorner.CornerRadius = UDim.new(0,5)
+ListCorner.Parent = List
+
+local Padding = Instance.new("UIPadding")
+Padding.PaddingTop = UDim.new(0,5)
+Padding.PaddingBottom = UDim.new(0,5)
+Padding.PaddingLeft = UDim.new(0,7)
+Padding.PaddingRight = UDim.new(0,7)
+Padding.Parent = List
+
+local Layout = Instance.new("UIListLayout")
+Layout.Padding = UDim.new(0,2)
+Layout.SortOrder = Enum.SortOrder.LayoutOrder
+Layout.Parent = List
+
+--==================================================
+-- GET TEXT
+--==================================================
+
+local function GetText(Object)
+
+    local Success, Value = pcall(function()
+        return Object.ContentText
+    end)
+
+    if Success
+        and Value ~= nil
+        and tostring(Value) ~= "" then
+
+        return tostring(Value)
+    end
+
+    local Attribute =
+        Object:GetAttribute("ContentText")
+
+    if Attribute ~= nil
+        and tostring(Attribute) ~= "" then
+
+        return tostring(Attribute)
+    end
+
+    if Object:IsA("TextLabel")
+        or Object:IsA("TextButton")
+        or Object:IsA("TextBox") then
+
+        if Object.Text ~= "" then
+            return Object.Text
+        end
+    end
+
+    return nil
+end
+
+--==================================================
+-- FIND TEXT
+--==================================================
+
+local function FindText(Container, Name)
+
+    for _, Object in ipairs(
+        Container:GetDescendants()
+    ) do
+
+        if Object:IsA("TextLabel")
+            or Object:IsA("TextButton")
+            or Object:IsA("TextBox") then
+
+            if Object.Name:lower() == Name:lower() then
+
+                local Text = GetText(Object)
+
+                if Text then
+                    return Text
+                end
+            end
+        end
+    end
+
+    return ""
+end
+
+--==================================================
+-- PARSE PER SECOND
+--==================================================
+
+local function ParsePerSecond(Text)
+
+    if not Text then
+        return 0
+    end
+
+    local Number, Suffix =
+        Text:match(
+            "%$?([%d%.]+)%s*([KkMmBbTt]?)%s*/[Ss]"
+        )
+
+    if not Number then
+        return 0
+    end
+
+    Number = tonumber(Number)
+
+    if not Number then
+        return 0
+    end
+
+    Suffix = Suffix:upper()
+
+    if Suffix == "K" then
+        return Number * 1e3
+
+    elseif Suffix == "M" then
+        return Number * 1e6
+
+    elseif Suffix == "B" then
+        return Number * 1e9
+
+    elseif Suffix == "T" then
+        return Number * 1e12
+    end
+
+    return Number
+end
+
+--==================================================
+-- FORMAT MONEY
+--==================================================
+
+local function FormatMoney(Number)
+
+    if Number >= 1e12 then
+
+        return string.format(
+            "$%.2fT/s",
+            Number / 1e12
+        )
+
+    elseif Number >= 1e9 then
+
+        return string.format(
+            "$%.2fB/s",
+            Number / 1e9
+        )
+
+    elseif Number >= 1e6 then
+
+        return string.format(
+            "$%.2fM/s",
+            Number / 1e6
+        )
+
+    elseif Number >= 1e3 then
+
+        return string.format(
+            "$%.2fK/s",
+            Number / 1e3
+        )
+
+    end
+
+    return string.format(
+        "$%.0f/s",
+        Number
+    )
+end
+
+--==================================================
+-- GET GROUP
+--==================================================
+
+local function GetGroup(Object, Data)
+
+    local Current = Object.Parent
+
+    -- Cari Model terdekat
+    while Current and Current ~= Data do
+
+        if Current:IsA("Model") then
+            return Current
+        end
+
+        Current = Current.Parent
+    end
+
+    -- Cari Folder
+    Current = Object.Parent
+
+    while Current and Current ~= Data do
+
+        if Current:IsA("Folder") then
+            return Current
+        end
+
+        Current = Current.Parent
+    end
+
+    return Object.Parent
+end
+
+--==================================================
+-- FIND MY GROUPS
+--==================================================
+
+local function FindMyGroups()
+
+    local Assets =
+        workspace:FindFirstChild(
+            "ClientRenderedAssets"
+        )
+
+    if not Assets then
+        return {}, 0
+    end
+
+    local Groups = {}
+    local GroupMap = {}
+
+    local TotalPerSecond = 0
+
+    --==================================================
+    -- SCAN ASSET
+    --==================================================
+
+    for _, Asset in ipairs(
+        Assets:GetChildren()
+    ) do
+
+        -- Asset harus memiliki UserId kita
+        if string.find(
+            Asset.Name,
+            UserId,
+            1,
+            true
+        ) then
+
+            local Data =
+                Asset:FindFirstChild("Data")
+
+            if Data then
+
+                -- Scan semua TextLabel
+                for _, Object in ipairs(
+                    Data:GetDescendants()
+                ) do
+
+                    if Object:IsA("TextLabel")
+                        or Object:IsA("TextButton")
+                        or Object:IsA("TextBox") then
+
+                        local Name =
+                            Object.Name:lower()
+
+                        -- Hanya mulai dari DisplayName
+                        if Name == "displayname" then
+
+                            local Group =
+                                GetGroup(
+                                    Object,
+                                    Data
+                                )
+
+                            if Group then
+
+                                local Key =
+                                    Group:GetFullName()
+
+                                if not GroupMap[Key] then
+
+                                    --==================================================
+                                    -- AMBIL 3 DATA
+                                    --==================================================
+
+                                    local DisplayName =
+                                        FindText(
+                                            Group,
+                                            "DisplayName"
+                                        )
+
+                                    local PerSecond =
+                                        FindText(
+                                            Group,
+                                            "PerSecond"
+                                        )
+
+                                    local Odds =
+                                        FindText(
+                                            Group,
+                                            "Odds"
+                                        )
+
+                                    local PerSecondValue =
+                                        ParsePerSecond(
+                                            PerSecond
+                                        )
+
+                                    GroupMap[Key] = {
+                                        Group = Group,
+                                        DisplayName = DisplayName,
+                                        PerSecond = PerSecond,
+                                        Odds = Odds,
+                                        PerSecondValue =
+                                            PerSecondValue
+                                    }
+
+                                    table.insert(
+                                        Groups,
+                                        GroupMap[Key]
+                                    )
+
+                                    TotalPerSecond +=
+                                        PerSecondValue
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return Groups, TotalPerSecond
+end
+
+--==================================================
+-- CREATE ROW
+--==================================================
+
+local function CreateRow(Data, Index)
+
+    local Row = Instance.new("TextLabel")
+
+    Row.Size =
+        UDim2.new(1,0,0,24)
+
+    Row.BackgroundTransparency = 1
+
+    Row.Text =
+        tostring(Index) ..
+        ". " ..
+        Data.DisplayName ..
+        " " ..
+        Data.PerSecond ..
+        " [" ..
+        Data.Odds ..
+        "]"
+
+    Row.TextColor3 =
+        Color3.fromRGB(220,220,220)
+
+    Row.TextSize = 13
+
+    Row.Font =
+        Enum.Font.Gotham
+
+    Row.TextXAlignment =
+        Enum.TextXAlignment.Left
+
+    Row.TextTruncate =
+        Enum.TextTruncate.AtEnd
+
+    Row.Parent = List
+end
+
+--==================================================
+-- REFRESH
+--==================================================
+
+local function Refresh()
+
+    -- Clear
+    for _, Object in ipairs(
+        List:GetChildren()
+    ) do
+
+        if Object:IsA("TextLabel") then
+            Object:Destroy()
+        end
+
+    end
+
+    local Groups, Total =
+        FindMyGroups()
+
+    --==================================================
+    -- HEADER
+    --==================================================
+
+    Title.Text =
+        "MY DATA [" ..
+        #Groups ..
+        "]"
+
+    TotalLabel.Text =
+        "TOTAL: " ..
+        FormatMoney(Total)
+
+    --==================================================
+    -- SORT HIGHEST PER SECOND
+    --==================================================
+
+    table.sort(
+        Groups,
+        function(A, B)
+
+            return
+                A.PerSecondValue >
+                B.PerSecondValue
+
+        end
+    )
+
+    --==================================================
+    -- CREATE ROWS
+    --==================================================
+
+    for Index, Data in ipairs(Groups) do
+
+        CreateRow(
+            Data,
+            Index
+        )
+
+    end
+
+    task.defer(function()
+
+        List.CanvasSize =
+            UDim2.new(
+                0,
+                0,
+                0,
+                Layout.AbsoluteContentSize.Y + 10
+            )
+
+    end)
+end
+
+--==================================================
+-- AUTO REFRESH
+--==================================================
+
+task.spawn(function()
+
+    while Gui.Parent do
+
+        pcall(Refresh)
+
+        task.wait(0.5)
+
+    end
+
+end)
+
+--==================================================
+-- START
+--==================================================
+
+print(
+    "[MY DATA] Started"
+)
+
+print(
+    "[MY DATA] UserId:",
+    UserId
+)
