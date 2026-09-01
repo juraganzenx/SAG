@@ -122,7 +122,7 @@ local FUSED_EGG_WAIT_TIMEOUT = 10
 -- FLY
 --==============================
 
-local FLY_SPEED = 800
+local FLY_SPEED = 900
 local REACH_DISTANCE = 2
 local FLY_UPDATE_DELAY = 0.03
 local FLY_MAX_TIME = 120
@@ -161,7 +161,7 @@ local MAX_PLOT = 8
 --==============================
 
 local NORMAL_MIN_SCALE = 0.1
-local NORMAL_MIN_PIVOT_X = 3500
+local NORMAL_MIN_PIVOT_X = 4300
 
 
 --==============================
