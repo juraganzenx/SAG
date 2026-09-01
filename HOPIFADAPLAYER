@@ -14,7 +14,7 @@ local LocalPlayer = Players.LocalPlayer
 
 local SPEED_LIMIT = 5e9
 
-local CHECK_DELAY = 1
+local CHECK_DELAY = 10
 local HOP_DELAY = 1
 
 local HopRunning = false
