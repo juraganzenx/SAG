@@ -528,7 +528,7 @@ task.spawn(function()
 
         pcall(Refresh)
 
-        task.wait(0.5)
+        task.wait(10)
 
     end
 
