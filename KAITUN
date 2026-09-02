@@ -1,4 +1,4 @@
---FUSEV9.2
+--FUSEV9.3
 --======================oi============================
 -- AUTO FUSE PET
 --
@@ -171,8 +171,8 @@ local NORMAL_MIN_PIVOT_X = 3500
 local MAX_PROMPT_DISTANCE = 20
 local WALK_TO_EGG_DISTANCE = 4
 
-local HATCH_MAX_TIME = 1
-local HATCH_RESUME_TIME = 1
+local HATCH_MAX_TIME = 0.5
+local HATCH_RESUME_TIME = 0.5
 local PROMPT_CHECK_DELAY = 0.2
 
 
@@ -271,6 +271,7 @@ local ProcessRunning = false
 local MovementOwner = nil
 local TreadmillRunning = false
 local HatchRunning = false
+local FirstExecuteHatchDone = false
 
 
 --==================================================
@@ -4541,6 +4542,43 @@ task.spawn(function()
     task.wait(
         START_DELAY
     )
+
+
+    --==================================================
+    -- FIRST EXECUTE HATCH
+    --==================================================
+
+    if not FirstExecuteHatchDone then
+        print(
+            "=========================================="
+        )
+
+        print(
+            "[MAIN] FIRST EXECUTE -> HATCH EXISTING EGGS"
+        )
+
+        print(
+            "=========================================="
+        )
+
+        local FirstHatchSuccess, FirstHatchError =
+            xpcall(function()
+                HatchAllPlacedEggs()
+            end, debug.traceback)
+
+        if not FirstHatchSuccess then
+            warn(
+                "[MAIN] FIRST EXECUTE HATCH ERROR:",
+                FirstHatchError
+            )
+        end
+
+        FirstExecuteHatchDone = true
+
+        task.wait(
+            HATCH_RESUME_TIME
+        )
+    end
 
 
     print(
