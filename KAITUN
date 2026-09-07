@@ -1,540 +1,277 @@
---FUSEV9.3aaa
+--==================================================
+-- FUSEV9.3 + AUTO EGG LITE
+--==================================================
+----------------------------------------------------
 
---======================oi============================
+-- MAIN FLOW:
 
--- AUTO FUSE PET
+-- 1. FUSE 3 PET
 
---
+--    FUSE SUCCESS
+--       ↓
+--    PLACE FUSED EGG
+---------------------
 
--- FLOW:
-
---
-
--- #1 AUTO FUSE
-
--- -> FIND 3 SAME PET
-
--- -> LOAD PET #1
-
--- -> LOAD PET #2
-
--- -> LOAD PET #3
-
--- -> BEGIN FUSE
-
--- -> FINISH REVEAL
-
--- -> WAIT FUSED EGG EQUIPPED
-
--- -> FLY PLOT
-
--- -> PLACE FUSED EGG
-
--- -> NO HATCH
-
---
-
--- JIKA TIDAK ADA 3 PET SIAP FUSE:
-
---
-
--- #2 FIELD EGG
-
--- -> CARI FIELD EGG
-
--- -> FORCE DOFF
-
--- -> FLY START AREA
-
--- -> FLY EGG
-
--- -> CARRY
-
--- -> RETURN START
-
--- -> FLY PLOT
-
--- -> PLACE
-
--- -> NO HATCH
-
---
-
--- JIKA TIDAK ADA FIELD EGG:
-
---
-
--- #3 INVENTORY EGG
-
--- -> SNAPSHOT INVENTORY
-
--- -> HATCH EXISTING PLACED EGG
-
--- -> EQUIP EGG BY UID
-
--- -> FLY PLOT
-
--- -> PLACE
-
--- -> PROCESS NEXT SNAPSHOT
-
--- -> TIDAK RESCAN
-
---
-
--- #4 TREADMILL
-
---
-
--- HATCH:
-
--- -> HANYA DILAKUKAN SEBELUM PROCESS
-
---    INVENTORY EGG
-
--- -> SCAN 1X
-
--- -> HATCH SESUAI SNAPSHOT
-
---
-
--- INVENTORY EGG:
-
--- -> Placement == nil
-
--- -> AssetScale TERBESAR
-
--- -> JIKA SCALE SAMA -> UID
-
--- -> SNAPSHOT 1X
-
---
-
--- FIELD EGG:
-
--- -> SETIAP MULAI FORCE DOFF
+--    FUSE FAILED
+--       ↓
+--    CHECK HIGHLIGHT
+--       ↓
+--    ADA HIGHLIGHT?
+--       ├── YES
+--       │     ↓
+--       │  AUTO EGG LITE
+--       │     ↓
+--       │  NEAREST X TERKECIL
+--       │     ↓
+--       │  TWEEN NEAREST
+--       │     ↓
+--       │  CARRY NEAREST
+--       │     ↓
+--       │  GUARD
+--       │     ↓
+--       │  WAIT GUARD
+--       │     ↓
+--       │  FIND HIGHLIGHT
+--       │     ↓
+--       │  TELEPORT HIGHLIGHT
+--       │     ↓
+--       │  ANCHOR ROOT
+--       │     ↓
+--       │  WAIT 0.5
+--       │     ↓
+--       │  UNANCHOR
+--       │     ↓
+--       │  WAIT GETTINGUP
+--       │     ↓
+--       │  CARRY HIGHLIGHT UID ONLY
+--       │     ↓
+--       │  VERIFY EGG HILANG
+--       │     ↓
+--       │  TWEEN STARTAREA
+--       │
+--       └── NO
+--             ↓
+--          INVENTORY EGG
+--             ↓
+--          TREADMILL
+---------------------
 
 --==================================================
 
-
-
-
-
 --==================================================
-
 -- SERVICES
-
 --==================================================
-
-
 
 local Players =
-
-    game:GetService("Players")
-
-
+game:GetService("Players")
 
 local ReplicatedStorage =
-
-    game:GetService("ReplicatedStorage")
-
-
+game:GetService("ReplicatedStorage")
 
 local Workspace =
+game:GetService("Workspace")
 
-    game:GetService("Workspace")
-
-
+local TweenService =
+game:GetService("TweenService")
 
 local LocalPlayer =
-
-    Players.LocalPlayer
-
-
-
-
+Players.LocalPlayer
 
 --==================================================
-
 -- NETWORKING
-
 --==================================================
-
-
 
 local Networking =
-
-    ReplicatedStorage
-
-        :WaitForChild("Packages")
-
-        :WaitForChild("Networking")
-
-
-
-
+ReplicatedStorage
+:WaitForChild("Packages")
+:WaitForChild("Networking")
 
 --==================================================
-
 -- SAVE
-
 --==================================================
-
-
-
-local Shared =
-
-    ReplicatedStorage
-
-        :WaitForChild("Shared")
-
-
 
 local Save =
-
-    require(
-
-        Shared:WaitForChild("Save")
-
-    )
-
-
-
-print("[SAVE] Save module loaded")
-
-
-
-
+require(
+ReplicatedStorage
+:WaitForChild("Shared")
+:WaitForChild("Save")
+)
 
 --==================================================
-
--- CONFIG
-
+-- CONFIG FUSE
 --==================================================
-
-
-
---==============================
-
--- FUSE
-
---==============================
-
-
 
 local MAX_PET_WEIGHT = 1000000
 
-
-
 local FUSE_LOAD_DELAY = 1
-
 local FUSE_AFTER_BEGIN_DELAY = 3
-
 local FUSE_AFTER_REVEAL_DELAY = 1
-
 local FUSED_EGG_WAIT_TIMEOUT = 10
 
+--==================================================
+-- CONFIG GENERAL
+--==================================================
 
+local REACH_DISTANCE = 5
 
-
-
---==============================
-
--- FLY
-
---==============================
-
-
-
-local FLY_SPEED = 5000
-
-local REACH_DISTANCE = 2
-
-local FLY_UPDATE_DELAY = 0.03
-
-local FLY_MAX_TIME = 120
-
-
-
-
-
---==============================
-
--- FIELD EGG
-
---==============================
-
-
+--==================================================
+-- FIELD EGG / AUTO EGG LITE
+--==================================================
 
 local START_AREA_NAME = "StartArea"
 
-local EGG_FOLDER_NAME = "AreaEggSlotsClient"
+local EGG_FOLDER_NAME =
+"AreaEggSlotsClient"
 
+local TWEEN_SPEED = 800
+local TWEEN_TIMEOUT = 10
 
+local AFTER_CARRY_DELAY = 0.1
 
-local AFTER_CARRY_START_DELAY = 0.2
+local GUARD_WAIT = 0.5
 
-local CARRY_DELAY = 0
+local AUTO_EGG_LOOP_DELAY = 0.2
 
+local FIELD_EGG_HEIGHT_OFFSET = 3
 
+local HIGHLIGHT_ANCHOR_WAIT = 0.5
 
-local WAIT_AFTER_RETURN = 3
+local GETTING_UP_TIMEOUT = 5
+local GETTING_UP_CHECK_DELAY = 0.05
 
-local TOOL_CHECK_DELAY = 0.2
+local CARRY_VERIFY_TIMEOUT = 3
+local CARRY_VERIFY_CHECK_DELAY = 0.05
 
+local FIELD_CARRY_RETRIES = 3
+local FIELD_CARRY_RETRY_DELAY = 0.25
 
+--==================================================
+-- HIGHLIGHT CONFIG
+--==================================================
 
+local HIGHLIGHT_CLASS_NAME =
+"Highlight"
 
+local REQUIRE_HIGHLIGHT_ENABLED =
+true
 
---==============================
-
+--==================================================
 -- PLACE
-
---==============================
-
-
+--==================================================
 
 local FIXED_Y = -0.5
 
 local MARGIN = 2
 
-
-
-local PLACE_RETRY_DELAY = 0.5
-
 local WAIT_TOOL_GONE = 5
 
-
-
 local MIN_PLOT = 1
-
 local MAX_PLOT = 8
 
-
-
-
-
---==============================
-
+--==================================================
 -- NORMAL FIELD EGG FILTER
+--==================================================
 
---==============================
-
-
-
-local NORMAL_MIN_SCALE = 13
-
+local NORMAL_MIN_SCALE = 1
 local NORMAL_MIN_PIVOT_X = 3500
 
-
-
-
-
---==============================
-
+--==================================================
 -- HATCH
-
---==============================
-
-
+--==================================================
 
 local MAX_PROMPT_DISTANCE = 20
 
 local WALK_TO_EGG_DISTANCE = 4
 
-
-
 local HATCH_MAX_TIME = 0.5
-
 local HATCH_RESUME_TIME = 0.5
 
 local PROMPT_CHECK_DELAY = 0.2
 
-
-
-
-
---==============================
-
+--==================================================
 -- INVENTORY EGG
-
---==============================
-
-
+--==================================================
 
 local INVENTORY_EGG_EQUIP_TIMEOUT = 5
-
 local INVENTORY_EGG_TOOL_DELAY = 0.5
-
 local INVENTORY_EGG_AFTER_PLACE_DELAY = 0.5
 
-
-
-
-
---==============================
-
+--==================================================
 -- TREADMILL
+--==================================================
 
---==============================
+local TREADMILL_NAME =
+"TreadmillBottom"
 
+local TREADMILL_TELEPORT_DISTANCE = 5
 
-
-local TREADMILL_NAME = "TreadmillBottom"
-
-local TREADMILL_FLY_DISTANCE = 5
-
-
-
-
-
---==============================
-
+--==================================================
 -- MAIN
-
---==============================
-
-
+--==================================================
 
 local START_DELAY = 5
-
 local LOOP_DELAY = 1
 
-
-
-
-
 --==================================================
-
 -- BLACKLIST
-
 --==================================================
-
-
 
 local BLACKLIST = {
-
-    ["Crane"] = true,
-
+["Crane"] = true,
 }
 
-
-
-
-
 --==================================================
-
 -- REMOTES
-
 --==================================================
-
-
 
 local LoadPet =
-
-    Networking:WaitForChild(
-
-        "RF/Fusery/LoadPet"
-
-    )
-
-
+Networking:WaitForChild(
+"RF/Fusery/LoadPet"
+)
 
 local BeginFuse =
-
-    Networking:WaitForChild(
-
-        "RF/Fusery/BeginFuse"
-
-    )
-
-
+Networking:WaitForChild(
+"RF/Fusery/BeginFuse"
+)
 
 local FinishReveal =
-
-    Networking:WaitForChild(
-
-        "RF/Fusery/FinishReveal"
-
-    )
-
-
-
-
+Networking:WaitForChild(
+"RF/Fusery/FinishReveal"
+)
 
 local CarryEggRemote =
-
-    Networking:WaitForChild(
-
-        "RF/EggWorld/AskFieldEggCarry"
-
-    )
-
-
+Networking:WaitForChild(
+"RF/EggWorld/AskFieldEggCarry"
+)
 
 local PlaceEggRemote =
-
-    Networking:WaitForChild(
-
-        "RF/EggWorld/AskPlaceEgg"
-
-    )
-
-
+Networking:WaitForChild(
+"RF/EggWorld/AskPlaceEgg"
+)
 
 local EquipEggRemote =
-
-    Networking:WaitForChild(
-
-        "RF/EggWorld/AskWearTool"
-
-    )
-
-
-
-
+Networking:WaitForChild(
+"RF/EggWorld/AskWearTool"
+)
 
 local MonsterFeedRemote =
-
-    Networking:WaitForChild(
-
-        "RF/MonsterParasite/AskFeed"
-
-    )
-
-
-
-
+Networking:WaitForChild(
+"RF/MonsterParasite/AskFeed"
+)
 
 local TreadmillWearRemote =
-
-    Networking:WaitForChild(
-
-        "RF/Treadmill/AskWearStill"
-
-    )
-
-
+Networking:WaitForChild(
+"RF/Treadmill/AskWearStill"
+)
 
 local TreadmillDoffRemote =
-
-    Networking:WaitForChild(
-
-        "RF/Treadmill/AskDoff"
-
-    )
-
-
-
-
+Networking:WaitForChild(
+"RF/Treadmill/AskDoff"
+)
 
 --==================================================
-
 -- STATE
-
 --==================================================
-
-
 
 local ProcessRunning = false
 
@@ -546,8451 +283,3855 @@ local HatchRunning = false
 
 local FirstExecuteHatchDone = false
 
-
-
-
-
+--==================================================
+-- AUTO EGG LITE
+-- LANGSUNG ON JIKA DIPANGGIL
 --==================================================
 
--- FORWARD DECLARATION
+local AutoEggEnabled = true
 
 --==================================================
-
-
-
-local ExitTreadmill
-
-
-
-
-
---==================================================
-
 -- CHARACTER
-
 --==================================================
-
-
 
 local function GetCharacter()
 
-
-
-    return LocalPlayer.Character
-
-
+ 
+return LocalPlayer.Character
+ 
 
 end
-
-
-
-
 
 local function GetHumanoid()
 
+ 
+local Character =
+    GetCharacter()
 
+if not Character then
+    return nil
+end
 
-    local Character =
-
-        GetCharacter()
-
-
-
-    if not Character then
-
-        return nil
-
-    end
-
-
-
-    return Character:FindFirstChildOfClass(
-
-        "Humanoid"
-
-    )
-
+return Character:FindFirstChildOfClass(
+    "Humanoid"
+)
 
 
 end
-
-
-
-
 
 local function GetRoot()
 
 
+local Character =
+    GetCharacter()
 
-    local Character =
+if not Character then
+    return nil
+end
 
-        GetCharacter()
-
-
-
-    if not Character then
-
-        return nil
-
-    end
-
-
-
-    return Character:FindFirstChild(
-
-        "HumanoidRootPart"
-
-    )
-
+return Character:FindFirstChild(
+    "HumanoidRootPart"
+)
 
 
 end
-
-
-
-
 
 local function GetBackpack()
 
 
-
-    return LocalPlayer:FindFirstChild(
-
-        "Backpack"
-
-    )
-
+return LocalPlayer:FindFirstChild(
+    "Backpack"
+)
 
 
 end
 
-
-
-
-
 --==================================================
-
 -- EQUIPPED TOOL
-
 --==================================================
-
-
 
 local function GetEquippedTool()
 
 
+local Character =
+    GetCharacter()
 
-    local CharacterFolder =
-
-        Workspace:FindFirstChild(
-
-            LocalPlayer.Name
-
-        )
-
-
-
-    if not CharacterFolder then
-
-        return nil
-
-    end
-
-
-
-
-
-    for _, Object in ipairs(
-
-        CharacterFolder:GetChildren()
-
-    ) do
-
-
-
-        if Object:IsA("Tool") then
-
-
-
-            return Object
-
-
-
-        end
-
-
-
-    end
-
-
-
-
-
+if not Character then
     return nil
+end
 
 
+for _, Object in ipairs(
+    Character:GetChildren()
+) do
+
+    if Object:IsA("Tool") then
+        return Object
+    end
 
 end
 
 
+return nil
 
 
+end
+
+--==================================================
+-- WAIT EQUIPPED TOOL
+--==================================================
 
 local function WaitForEquippedTool(
-
-    Timeout
-
+Timeout
 )
 
 
+local StartTime =
+    tick()
 
-    local StartTime =
 
-        tick()
+while tick() - StartTime <
+    Timeout do
 
+    local Tool =
+        GetEquippedTool()
 
 
-
-
-    while tick() - StartTime <
-
-        Timeout do
-
-
-
-
-
-        local Tool =
-
-            GetEquippedTool()
-
-
-
-
-
-        if Tool then
-
-
-
-            print(
-
-                "[TOOL] EQUIPPED:",
-
-                Tool.Name,
-
-                "| UID:",
-
-                Tool:GetAttribute("UID")
-
-            )
-
-
-
-            return Tool
-
-
-
-        end
-
-
-
-
-
-        task.wait(
-
-            TOOL_CHECK_DELAY
-
-        )
-
-
-
-    end
-
-
-
-
-
-    return nil
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- MOVEMENT LOCK
-
---==================================================
-
-
-
-local function AcquireMovementLock(
-
-    Name
-
-)
-
-
-
-    if MovementOwner ~= nil then
-
-
-
-        warn(
-
-            "[FLY] MOVEMENT BUSY:",
-
-            MovementOwner,
-
-            "| REQUEST:",
-
-            Name
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    MovementOwner = Name
-
-
-
-
-
-    print(
-
-        "[FLY] LOCK:",
-
-        Name
-
-    )
-
-
-
-
-
-    return true
-
-
-
-end
-
-
-
-
-
-local function ReleaseMovementLock(
-
-    Name
-
-)
-
-
-
-    if MovementOwner == Name then
-
-
-
-        MovementOwner = nil
-
-
-
-
+    if Tool then
 
         print(
-
-            "[FLY] RELEASE:",
-
-            Name
-
+            "[TOOL] EQUIPPED:",
+            Tool.Name,
+            "| UID:",
+            Tool:GetAttribute("UID")
         )
 
-
+        return Tool
 
     end
 
 
+    task.wait(
+        0.15
+    )
 
 end
 
 
+return nil
 
 
+end
+
+--==================================================
+-- MOVEMENT LOCK
+--==================================================
+
+local function AcquireMovementLock(
+Name
+)
+
+
+if MovementOwner ~= nil then
+
+    warn(
+        "[MOVEMENT] BUSY:",
+        MovementOwner,
+        "| REQUEST:",
+        Name
+    )
+
+    return false
+
+end
+
+
+MovementOwner =
+    Name
+
+return true
+
+
+end
+
+local function ReleaseMovementLock(
+Name
+)
+
+
+if MovementOwner == Name then
+
+    MovementOwner =
+        nil
+
+end
+
+
+end
+
+--==================================================
+-- STOP MOVEMENT
+--==================================================
 
 local function StopFly()
 
 
-
-    local Root =
-
-        GetRoot()
+local Root =
+    GetRoot()
 
 
+if Root then
 
+    Root.AssemblyLinearVelocity =
+        Vector3.zero
 
-
-    if Root then
-
-
-
-        Root.AssemblyLinearVelocity =
-
-            Vector3.zero
-
-
-
-        Root.AssemblyAngularVelocity =
-
-            Vector3.zero
-
-
-
-    end
-
-
+    Root.AssemblyAngularVelocity =
+        Vector3.zero
 
 end
 
 
-
-
-
---==================================================
-
--- AUTO FLY
+end
 
 --==================================================
+-- AUTO EGG LITE TWEEN
+--==================================================
 
-
-
-local function AutoFlyToPosition(
-
-    TargetPosition,
-
-    Distance,
-
-    LockName
-
+local function TweenToPosition(
+TargetPosition
 )
 
 
+if not AutoEggEnabled then
+    return false
+end
 
-    if not TargetPosition then
 
-        return false
+local Root =
+    GetRoot()
 
-    end
 
+if not Root then
+    return false
+end
 
 
+if not TargetPosition then
+    return false
+end
 
 
-    Distance =
+local Distance =
+    (
+        Root.Position
+        - TargetPosition
+    ).Magnitude
 
-        Distance
 
-        or REACH_DISTANCE
+if Distance <=
+    REACH_DISTANCE then
 
+    return true
 
+end
 
 
-
-    LockName =
-
-        LockName
-
-        or "AUTO_FLY"
-
-
-
-
-
-    if not AcquireMovementLock(
-
-        LockName
-
-    ) then
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    local Root =
-
-        GetRoot()
-
-
-
-    local Humanoid =
-
-        GetHumanoid()
-
-
-
-
-
-    if not Root or not Humanoid then
-
-
-
-        ReleaseMovementLock(
-
-            LockName
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    print(
-
-        "[FLY] START:",
-
-        LockName
-
+local Duration =
+    math.max(
+        Distance / TWEEN_SPEED,
+        0.05
     )
 
 
+print(
+    "[TWEEN]",
+    "DIST:",
+    math.floor(
+        Distance * 100
+    ) / 100,
+    "| TIME:",
+    math.floor(
+        Duration * 100
+    ) / 100
+)
 
-    print(
 
-        "[FLY] TARGET:",
+local Tween =
+    TweenService:Create(
+        Root,
 
-        TargetPosition
+        TweenInfo.new(
+            Duration,
+            Enum.EasingStyle.Linear,
+            Enum.EasingDirection.Out
+        ),
 
+        {
+            CFrame =
+                CFrame.new(
+                    TargetPosition
+                )
+        }
     )
 
 
+local Finished =
+    false
 
+local Success =
+    false
 
 
-    local OldPlatformStand =
+local Connection =
+    Tween.Completed:Connect(
+        function(State)
 
-        Humanoid.PlatformStand
-
-
-
-    local OldAutoRotate =
-
-        Humanoid.AutoRotate
-
-
-
-
-
-    Humanoid.PlatformStand =
-
-        true
-
-
-
-    Humanoid.AutoRotate =
-
-        false
-
-
-
-
-
-    local BG =
-
-        Instance.new(
-
-            "BodyGyro"
-
-        )
-
-
-
-
-
-    BG.Name =
-
-        "AutoFuseEggGyro"
-
-
-
-
-
-    BG.P =
-
-        9e4
-
-
-
-
-
-    BG.MaxTorque =
-
-        Vector3.new(
-
-            9e9,
-
-            9e9,
-
-            9e9
-
-        )
-
-
-
-
-
-    BG.CFrame =
-
-        Root.CFrame
-
-
-
-
-
-    BG.Parent =
-
-        Root
-
-
-
-
-
-    local BV =
-
-        Instance.new(
-
-            "BodyVelocity"
-
-        )
-
-
-
-
-
-    BV.Name =
-
-        "AutoFuseEggVelocity"
-
-
-
-
-
-    BV.MaxForce =
-
-        Vector3.new(
-
-            9e9,
-
-            9e9,
-
-            9e9
-
-        )
-
-
-
-
-
-    BV.Velocity =
-
-        Vector3.zero
-
-
-
-
-
-    BV.Parent =
-
-        Root
-
-
-
-
-
-    local Success =
-
-        false
-
-
-
-
-
-    local StartTime =
-
-        tick()
-
-
-
-
-
-    while true do
-
-
-
-        Root =
-
-            GetRoot()
-
-
-
-        Humanoid =
-
-            GetHumanoid()
-
-
-
-
-
-        if not Root or not Humanoid then
-
-            break
-
-        end
-
-
-
-
-
-        if tick() - StartTime >
-
-            FLY_MAX_TIME then
-
-
-
-            warn(
-
-                "[FLY] TIMEOUT:",
-
-                LockName
-
-            )
-
-
-
-            break
-
-
-
-        end
-
-
-
-
-
-        local Offset =
-
-            TargetPosition
-
-            - Root.Position
-
-
-
-
-
-        local CurrentDistance =
-
-            Offset.Magnitude
-
-
-
-
-
-        if CurrentDistance <= Distance then
-
-
-
-            Success =
-
+            Finished =
                 true
 
 
-
-
-
-            print(
-
-                "[FLY] REACHED:",
-
-                LockName,
-
-                "| DIST:",
-
-                math.floor(
-
-                    CurrentDistance * 10
-
-                ) / 10
-
-            )
-
-
-
-
-
-            break
-
-
-
-        end
-
-
-
-
-
-        local Direction =
-
-            CurrentDistance > 0
-
-            and Offset.Unit
-
-            or Vector3.zero
-
-
-
-
-
-        local CurrentSpeed =
-
-            math.min(
-
-                FLY_SPEED,
-
-                math.max(
-
-                    100,
-
-                    CurrentDistance * 8
-
-                )
-
-            )
-
-
-
-
-
-        BV.Velocity =
-
-            Direction * CurrentSpeed
-
-
-
-
-
-        if Direction.Magnitude > 0 then
-
-
-
-            BG.CFrame =
-
-                CFrame.lookAt(
-
-                    Root.Position,
-
-                    Root.Position + Direction
-
-                )
-
-
-
-        end
-
-
-
-
-
-        task.wait(
-
-            FLY_UPDATE_DELAY
-
-        )
-
-
-
-    end
-
-
-
-
-
-    BV.Velocity =
-
-        Vector3.zero
-
-
-
-
-
-    StopFly()
-
-
-
-
-
-    if BG then
-
-        BG:Destroy()
-
-    end
-
-
-
-
-
-    if BV then
-
-        BV:Destroy()
-
-    end
-
-
-
-
-
-    Humanoid =
-
-        GetHumanoid()
-
-
-
-
-
-    if Humanoid then
-
-
-
-        Humanoid.PlatformStand =
-
-            OldPlatformStand
-
-
-
-        Humanoid.AutoRotate =
-
-            OldAutoRotate
-
-
-
-    end
-
-
-
-
-
-    StopFly()
-
-
-
-
-
-    ReleaseMovementLock(
-
-        LockName
-
-    )
-
-
-
-
-
-    print(
-
-        "[FLY] END:",
-
-        LockName,
-
-        "| SUCCESS:",
-
-        Success
-
-    )
-
-
-
-
-
-    return Success
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- GET POSITION
-
---==================================================
-
-
-
-local function GetPosition(
-
-    Object
-
-)
-
-
-
-    if not Object then
-
-        return nil
-
-    end
-
-
-
-
-
-    if Object:IsA(
-
-        "BasePart"
-
-    ) then
-
-
-
-        return Object.Position
-
-
-
-    end
-
-
-
-
-
-    if Object:IsA(
-
-        "Model"
-
-    ) then
-
-
-
-        local Success,
-
-            Pivot =
-
-            pcall(function()
-
-
-
-                return Object:GetPivot()
-
-
-
-            end)
-
-
-
-
-
-        if Success and Pivot then
-
-            return Pivot.Position
-
-        end
-
-
-
-    end
-
-
-
-
-
-    return nil
-
-
-
-end
-
-
-
-
-
-local function FlyToObject(
-
-    Object,
-
-    Distance,
-
-    LockName
-
-)
-
-
-
-    if not Object then
-
-        return false
-
-    end
-
-
-
-
-
-    local Position =
-
-        GetPosition(
-
-            Object
-
-        )
-
-
-
-
-
-    if not Position then
-
-
-
-        warn(
-
-            "[FLY] POSITION NOT FOUND:",
-
-            Object.Name
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    return AutoFlyToPosition(
-
-        Position,
-
-        Distance or REACH_DISTANCE,
-
-        LockName
-
-            or ("MAIN:" .. Object.Name)
-
-    )
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- FIND 3 SAME PET
-
---==================================================
-
-
-
-local function FindThreeSamePets()
-
-
-
-    local Backpack =
-
-        GetBackpack()
-
-
-
-
-
-    if not Backpack then
-
-        return nil
-
-    end
-
-
-
-
-
-    local Groups = {}
-
-
-
-
-
-    for _, Tool in ipairs(
-
-        Backpack:GetChildren()
-
-    ) do
-
-
-
-
-
-        if Tool:IsA("Tool")
-
-            and not BLACKLIST[Tool.Name] then
-
-
-
-
-
-            local Weight =
-
-                Tool:GetAttribute(
-
-                    "Weight"
-
-                )
-
-
-
-
-
-            local UID =
-
-                Tool:GetAttribute(
-
-                    "UID"
-
-                )
-
-
-
-
-
-            if typeof(Weight) == "number"
-
-                and Weight < MAX_PET_WEIGHT
-
-                and typeof(UID) == "string"
-
-                and UID ~= "" then
-
-
-
-
-
-                Groups[Tool.Name] =
-
-                    Groups[Tool.Name]
-
-                    or {}
-
-
-
-
-
-                table.insert(
-
-                    Groups[Tool.Name],
-
-                    Tool
-
-                )
-
-
+            if State ==
+                Enum.PlaybackState.Completed then
+
+                Success =
+                    true
 
             end
 
-
-
         end
+    )
 
 
+Tween:Play()
+
+
+local StartTime =
+    tick()
+
+
+while not Finished do
+
+    if not AutoEggEnabled then
+
+        Tween:Cancel()
+
+        break
 
     end
 
 
+    if not GetRoot() then
 
+        Tween:Cancel()
 
-
-    for Name, Tools in pairs(
-
-        Groups
-
-    ) do
-
-
-
-
-
-        if #Tools >= 3 then
-
-
-
-            print(
-
-                "=========================================="
-
-            )
-
-
-
-            print(
-
-                "[FUSE] FOUND 3 SAME PET"
-
-            )
-
-
-
-            print(
-
-                "[FUSE] NAME:",
-
-                Name
-
-            )
-
-
-
-            print(
-
-                "=========================================="
-
-            )
-
-
-
-
-
-            for i = 1, 3 do
-
-
-
-                print(
-
-                    "[FUSE] PET #" .. i,
-
-                    "| NAME:",
-
-                    Tools[i].Name,
-
-                    "| WEIGHT:",
-
-                    Tools[i]:GetAttribute(
-
-                        "Weight"
-
-                    ),
-
-                    "| UID:",
-
-                    Tools[i]:GetAttribute(
-
-                        "UID"
-
-                    )
-
-                )
-
-
-
-            end
-
-
-
-
-
-            return
-
-                Tools[1],
-
-                Tools[2],
-
-                Tools[3]
-
-
-
-        end
-
-
+        break
 
     end
 
 
+    if tick() - StartTime >
+        TWEEN_TIMEOUT then
+
+        warn(
+            "[TWEEN] TIMEOUT"
+        )
+
+        Tween:Cancel()
+
+        break
+
+    end
 
 
+    task.wait()
 
+end
+
+
+Connection:Disconnect()
+
+
+return Success
+
+
+end
+
+--==================================================
+-- OBJECT POSITION
+--==================================================
+
+local function GetObjectPosition(
+Object
+)
+
+
+if not Object then
     return nil
-
-
-
 end
 
 
-
-
-
---==================================================
-
--- LOAD PET
-
---==================================================
-
-
-
-local function LoadOnePet(
-
-    Tool,
-
-    Index
-
-)
-
-
-
-    if not Tool
-
-        or not Tool.Parent then
-
-
-
-        warn(
-
-            "[FUSE] PET #" .. Index ..
-
-            " SUDAH TIDAK ADA"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    local UID =
-
-        Tool:GetAttribute(
-
-            "UID"
-
-        )
-
-
-
-
-
-    if typeof(UID) ~= "string"
-
-        or UID == "" then
-
-
-
-        warn(
-
-            "[FUSE] UID INVALID PET #",
-
-            Index
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    print(
-
-        "[FUSE] LOAD PET #" .. Index,
-
-        "| NAME:",
-
-        Tool.Name,
-
-        "| WEIGHT:",
-
-        Tool:GetAttribute(
-
-            "Weight"
-
-        ),
-
-        "| UID:",
-
-        UID
-
-    )
-
-
-
-
+if Object:IsA("Model") then
 
     local Success,
-
-        Result =
-
-        pcall(function()
-
-
-
-            return LoadPet:
-
-                InvokeServer(
-
-                    UID
-
-                )
-
-
-
-        end)
-
-
-
-
-
-    print(
-
-        "[FUSE] LoadPet:",
-
-        Success,
-
-        Result
-
-    )
-
-
-
-
-
-    if not Success then
-
-
-
-        warn(
-
-            "[FUSE] LoadPet ERROR:",
-
-            Result
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    task.wait(
-
-        FUSE_LOAD_DELAY
-
-    )
-
-
-
-
-
-    return true
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- BEGIN FUSE
-
---==================================================
-
-
-
-local function StartFuse()
-
-
-
-    print(
-
-        "=========================================="
-
-    )
-
-
-
-    print(
-
-        "[FUSE] BEGIN FUSE"
-
-    )
-
-
-
-
-
-    local Success,
-
-        Result =
-
-        pcall(function()
-
-
-
-            return BeginFuse:
-
-                InvokeServer()
-
-
-
-        end)
-
-
-
-
-
-    print(
-
-        "[FUSE] BeginFuse:",
-
-        Success,
-
-        Result
-
-    )
-
-
-
-
-
-    if not Success then
-
-        return false
-
-    end
-
-
-
-
-
-    return true
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- FINISH FUSE
-
---==================================================
-
-
-
-local function FinishFuse()
-
-
-
-    print(
-
-        "[FUSE] WAIT:",
-
-        FUSE_AFTER_BEGIN_DELAY,
-
-        "SEC"
-
-    )
-
-
-
-
-
-    task.wait(
-
-        FUSE_AFTER_BEGIN_DELAY
-
-    )
-
-
-
-
-
-    print(
-
-        "[FUSE] FINISH REVEAL"
-
-    )
-
-
-
-
-
-    local Success,
-
-        Result =
-
-        pcall(function()
-
-
-
-            return FinishReveal:
-
-                InvokeServer()
-
-
-
-        end)
-
-
-
-
-
-    print(
-
-        "[FUSE] FinishReveal:",
-
-        Success,
-
-        Result
-
-    )
-
-
-
-
-
-    if not Success then
-
-
-
-        warn(
-
-            "[FUSE] FinishReveal ERROR:",
-
-            Result
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    task.wait(
-
-        FUSE_AFTER_REVEAL_DELAY
-
-    )
-
-
-
-
-
-    return true
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- WAIT FUSED EGG
-
---==================================================
-
-
-
-local function WaitForFusedEggEquipped(
-
-    Timeout
-
-)
-
-
-
-    print(
-
-        "=========================================="
-
-    )
-
-
-
-    print(
-
-        "[FUSE] WAIT FUSED EGG EQUIPPED"
-
-    )
-
-
-
-
-
-    local StartTime =
-
-        tick()
-
-
-
-
-
-    while tick() - StartTime <
-
-        Timeout do
-
-
-
-
-
-        local Tool =
-
-            GetEquippedTool()
-
-
-
-
-
-        if Tool then
-
-
-
-            print(
-
-                "[FUSE] FUSED RESULT EQUIPPED:",
-
-                Tool.Name,
-
-                "| UID:",
-
-                Tool:GetAttribute(
-
-                    "UID"
-
-                )
-
-            )
-
-
-
-
-
-            return Tool
-
-
-
-        end
-
-
-
-
-
-        task.wait(
-
-            0.1
-
-        )
-
-
-
-    end
-
-
-
-
-
-    warn(
-
-        "[FUSE] FUSED EGG TIDAK MUNCUL EQUIPPED"
-
-    )
-
-
-
-
-
-    return nil
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- OWN PLOT
-
---==================================================
-
-
-
-local function GetMyPlot()
-
-
-
-    local Plots =
-
-        Workspace:FindFirstChild(
-
-            "Plots"
-
-        )
-
-
-
-
-
-    if not Plots then
-
-
-
-        warn(
-
-            "[PLOT] workspace.Plots tidak ditemukan"
-
-        )
-
-
-
-        return nil
-
-
-
-    end
-
-
-
-
-
-    for PlotNumber =
-
-        MIN_PLOT,
-
-        MAX_PLOT do
-
-
-
-
-
-        local Plot =
-
-            Plots:FindFirstChild(
-
-                tostring(
-
-                    PlotNumber
-
-                )
-
-            )
-
-
-
-
-
-        if Plot then
-
-
-
-            local PlotSign =
-
-                Plot:FindFirstChild(
-
-                    "PlotSign"
-
-                )
-
-
-
-
-
-            local PlayerPlotSign =
-
-                PlotSign
-
-                and PlotSign:FindFirstChild(
-
-                    "PlayerPlotSign"
-
-                )
-
-
-
-
-
-            local Frame =
-
-                PlayerPlotSign
-
-                and PlayerPlotSign:FindFirstChild(
-
-                    "Frame"
-
-                )
-
-
-
-
-
-            local PlayerName =
-
-                Frame
-
-                and Frame:FindFirstChild(
-
-                    "PlayerName"
-
-                )
-
-
-
-
-
-            if PlayerName
-
-                and PlayerName.Text ==
-
-                    LocalPlayer.Name then
-
-
-
-
-
-                print(
-
-                    "[PLOT] MY PLOT:",
-
-                    Plot.Name
-
-                )
-
-
-
-
-
-                return Plot
-
-
-
-            end
-
-
-
-        end
-
-
-
-    end
-
-
-
-
-
-    warn(
-
-        "[PLOT] OWN PLOT TIDAK DITEMUKAN"
-
-    )
-
-
-
-
-
-    return nil
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- GET PLOT AREA
-
---==================================================
-
-
-
-local function GetPlotArea(
-
-    Plot
-
-)
-
-
-
-    if not Plot then
-
-        return nil
-
-    end
-
-
-
-
-
-    local BiggestPart = nil
-
-    local BiggestArea = 0
-
-
-
-
-
-    for _, Object in ipairs(
-
-        Plot:GetDescendants()
-
-    ) do
-
-
-
-
-
-        if Object:IsA(
-
-            "BasePart"
-
-        ) then
-
-
-
-
-
-            local Name =
-
-                Object.Name:lower()
-
-
-
-
-
-            if not Name:find("sign")
-
-                and not Name:find(
-
-                    "playername"
-
-                )
-
-                and not Name:find(
-
-                    "deco"
-
-                )
-
-                and not Name:find(
-
-                    "border"
-
-                )
-
-                and not Name:find(
-
-                    "wall"
-
-                )
-
-                and not Name:find(
-
-                    "fence"
-
-                ) then
-
-
-
-
-
-                local Area =
-
-                    Object.Size.X
-
-                    * Object.Size.Z
-
-
-
-
-
-                if Area >
-
-                    BiggestArea then
-
-
-
-                    BiggestArea =
-
-                        Area
-
-
-
-                    BiggestPart =
-
-                        Object
-
-
-
-                end
-
-
-
-            end
-
-
-
-        end
-
-
-
-    end
-
-
-
-
-
-    if BiggestPart then
-
-
-
-        print(
-
-            "[PLACE] AREA:",
-
-            BiggestPart:GetFullName(),
-
-            "| SIZE:",
-
-            BiggestPart.Size
-
-        )
-
-
-
-    end
-
-
-
-
-
-    return BiggestPart
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- RANDOM POSITION
-
---==================================================
-
-
-
-local function GetRandomPosition(
-
-    Plot,
-
-    AreaPart
-
-)
-
-
-
-    if not Plot
-
-        or not AreaPart then
-
-
-
-        return nil
-
-
-
-    end
-
-
-
-
-
-    local Size =
-
-        AreaPart.Size
-
-
-
-
-
-    local MinX =
-
-        -Size.X / 2
-
-        + MARGIN
-
-
-
-
-
-    local MaxX =
-
-        Size.X / 2
-
-        - MARGIN
-
-
-
-
-
-    local MinZ =
-
-        -Size.Z / 2
-
-        + MARGIN
-
-
-
-
-
-    local MaxZ =
-
-        Size.Z / 2
-
-        - MARGIN
-
-
-
-
-
-    if MinX > MaxX then
-
-
-
-        MinX = 0
-
-        MaxX = 0
-
-
-
-    end
-
-
-
-
-
-    if MinZ > MaxZ then
-
-
-
-        MinZ = 0
-
-        MaxZ = 0
-
-
-
-    end
-
-
-
-
-
-    local LocalX =
-
-        MinX
-
-        + math.random()
-
-        * (MaxX - MinX)
-
-
-
-
-
-    local LocalZ =
-
-        MinZ
-
-        + math.random()
-
-        * (MaxZ - MinZ)
-
-
-
-
-
-    local WorldPosition =
-
-        AreaPart.CFrame:
-
-        PointToWorldSpace(
-
-            Vector3.new(
-
-                LocalX,
-
-                0,
-
-                LocalZ
-
-            )
-
-        )
-
-
-
-
-
-    local PlotPivot =
-
-        Plot:GetPivot()
-
-
-
-
-
-    local PlotLocalPosition =
-
-        PlotPivot:
-
-        PointToObjectSpace(
-
-            WorldPosition
-
-        )
-
-
-
-
-
-    local Result =
-
-        Vector3.new(
-
-            PlotLocalPosition.X,
-
-            FIXED_Y,
-
-            PlotLocalPosition.Z
-
-        )
-
-
-
-
-
-    print(
-
-        "[PLACE] RANDOM LOCAL:",
-
-        Result
-
-    )
-
-
-
-
-
-    return Result
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- PLACE EGG
-
---==================================================
-
-
-
-local function PlaceEggOnce(
-
-    Tool,
-
-    Plot
-
-)
-
-
-
-    if not Tool
-
-        or not Tool.Parent then
-
-
-
-        warn(
-
-            "[PLACE] TOOL INVALID"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    local UID =
-
-        Tool:GetAttribute(
-
-            "UID"
-
-        )
-
-
-
-
-
-    if typeof(UID) ~= "string"
-
-        or UID == "" then
-
-
-
-        warn(
-
-            "[PLACE] UID TIDAK DITEMUKAN:",
-
-            Tool.Name
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    local AreaPart =
-
-        GetPlotArea(
-
-            Plot
-
-        )
-
-
-
-
-
-    if not AreaPart then
-
-
-
-        warn(
-
-            "[PLACE] PLOT AREA TIDAK DITEMUKAN"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    local RandomPosition =
-
-        GetRandomPosition(
-
-            Plot,
-
-            AreaPart
-
-        )
-
-
-
-
-
-    if not RandomPosition then
-
-        return false
-
-    end
-
-
-
-
-
-    local LocalCFrame =
-
-        CFrame.new(
-
-            RandomPosition.X,
-
-            FIXED_Y,
-
-            RandomPosition.Z
-
-        )
-
-
-
-
-
-    print(
-
-        "=========================================="
-
-    )
-
-
-
-    print(
-
-        "[PLACE] PLACE TOOL:",
-
-        Tool.Name
-
-    )
-
-
-
-    print(
-
-        "[PLACE] UID:",
-
-        UID
-
-    )
-
-
-
-    print(
-
-        "[PLACE] LOCAL CF:",
-
-        LocalCFrame
-
-    )
-
-
-
-
-
-    local Success,
-
-        Result =
-
-        pcall(function()
-
-
-
-            return PlaceEggRemote:
-
-                InvokeServer({
-
-
-
-                    ["Uid"] =
-
-                        UID,
-
-
-
-                    ["LocalCFrame"] =
-
-                        LocalCFrame,
-
-
-
-                })
-
-
-
-        end)
-
-
-
-
-
-    print(
-
-        "[PLACE] RESULT:",
-
-        Success,
-
-        Result
-
-    )
-
-
-
-
-
-    if not Success then
-
-
-
-        warn(
-
-            "[PLACE] ERROR:",
-
-            Result
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    if Result == false then
-
-
-
-        warn(
-
-            "[PLACE] SERVER RETURN FALSE"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    return true
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- WAIT TOOL GONE
-
---==================================================
-
-
-
-local function WaitToolGone(
-
-    Tool,
-
-    Timeout
-
-)
-
-
-
-    if not Tool then
-
-        return true
-
-    end
-
-
-
-
-
-    local StartTime =
-
-        tick()
-
-
-
-
-
-    while tick() - StartTime <
-
-        Timeout do
-
-
-
-
-
-        if not Tool.Parent then
-
-
-
-            print(
-
-                "[PLACE] TOOL GONE"
-
-            )
-
-
-
-            return true
-
-
-
-        end
-
-
-
-
-
-        if GetEquippedTool()
-
-            ~= Tool then
-
-
-
-            print(
-
-                "[PLACE] TOOL NO LONGER EQUIPPED"
-
-            )
-
-
-
-            return true
-
-
-
-        end
-
-
-
-
-
-        task.wait(
-
-            0.1
-
-        )
-
-
-
-    end
-
-
-
-
-
-    warn(
-
-        "[PLACE] WAIT TOOL GONE TIMEOUT"
-
-    )
-
-
-
-
-
-    return false
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- PLACE FUSED EGG
-
---
-
--- IMPORTANT:
-
--- TIDAK ADA HATCH DI SINI
-
---==================================================
-
-
-
-local function PlaceFusedEgg(
-
-    FusedEgg
-
-)
-
-
-
-    if not FusedEgg
-
-        or not FusedEgg.Parent then
-
-
-
-        warn(
-
-            "[FUSE PLACE] FUSED EGG INVALID"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    print(
-
-        "=========================================="
-
-    )
-
-
-
-    print(
-
-        "[FUSE PLACE] START"
-
-    )
-
-
-
-    print(
-
-        "[FUSE PLACE] TOOL:",
-
-        FusedEgg.Name
-
-    )
-
-
-
-    print(
-
-        "[FUSE PLACE] UID:",
-
-        FusedEgg:GetAttribute(
-
-            "UID"
-
-        )
-
-    )
-
-
-
-
-
-    local Plot =
-
-        GetMyPlot()
-
-
-
-
-
-    if not Plot then
-
-        return false
-
-    end
-
-
-
-
-
-    if TreadmillRunning then
-
-
-
-        print(
-
-            "[FUSE PLACE] EXIT TREADMILL"
-
-        )
-
-
-
-
-
-        if not ExitTreadmill() then
-
-            return false
-
-        end
-
-
-
-    end
-
-
-
-
-
-    if not FlyToObject(
-
-        Plot,
-
-        REACH_DISTANCE,
-
-        "FUSE:OWN_PLOT"
-
-    ) then
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    local CurrentTool =
-
-        GetEquippedTool()
-
-
-
-
-
-    if not CurrentTool then
-
-
-
-        warn(
-
-            "[FUSE PLACE] FUSED TOOL SUDAH TIDAK EQUIPPED"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    if CurrentTool ~= FusedEgg then
-
-
-
-        warn(
-
-            "[FUSE PLACE] TOOL BERUBAH!"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    local Placed =
-
-        PlaceEggOnce(
-
-            CurrentTool,
-
-            Plot
-
-        )
-
-
-
-
-
-    if not Placed then
-
-
-
-        warn(
-
-            "[FUSE PLACE] PLACE FAILED"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    WaitToolGone(
-
-        CurrentTool,
-
-        WAIT_TOOL_GONE
-
-    )
-
-
-
-
-
-    print(
-
-        "[FUSE PLACE] SUCCESS"
-
-    )
-
-
-
-    print(
-
-        "[FUSE PLACE] NO HATCH"
-
-    )
-
-
-
-
-
-    return true
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- FIELD EGG SCALE
-
---==================================================
-
-
-
-local function GetEggScale(
-
-    Egg
-
-)
-
-
-
-    if not Egg
-
-        or not Egg:IsA("Model") then
-
-
-
-        return 0
-
-
-
-    end
-
-
-
-
-
-    local Success,
-
-        Scale =
-
-        pcall(function()
-
-
-
-            return Egg:GetScale()
-
-
-
-        end)
-
-
-
-
-
-    if Success
-
-        and typeof(Scale) == "number" then
-
-
-
-        return Scale
-
-
-
-    end
-
-
-
-
-
-    return 0
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- FIELD EGG PIVOT X
-
---==================================================
-
-
-
-local function GetEggWorldPivotX(
-
-    Egg
-
-)
-
-
-
-    if not Egg
-
-        or not Egg:IsA("Model") then
-
-
-
-        return 0
-
-
-
-    end
-
-
-
-
-
-    local Success,
-
         Pivot =
-
         pcall(function()
 
-
-
-            return Egg.WorldPivot
-
-
+            return Object:GetPivot()
 
         end)
 
-
-
-
-
-    if Success
-
-        and Pivot then
-
-
-
-        return Pivot.Position.X
-
-
-
-    end
-
-
-
-
-
-    return 0
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- HIGHLIGHT
-
---==================================================
-
-
-
-local function HasHighlight(Egg)
-
-
-
-    if not Egg then
-
-        return false
-
-    end
-
-
-
-    for _, Object in ipairs(
-
-        Egg:GetDescendants()
-
-    ) do
-
-
-
-        if Object:IsA("Highlight")
-
-            and Object.Name ~= "MonsterParasiteHighlight" then
-
-
-
-            return true
-
-
-
-        end
-
-
-
-    end
-
-
-
-    return false
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- FIELD EGG TARGET HELPERS (NEW FLOW)
-
---==================================================
-
-local HIGHLIGHT_CLASS_NAME = "Highlight"
-local REQUIRE_HIGHLIGHT_ENABLED = true
-
-local CARRY_VERIFY_TIMEOUT = 3
-local CARRY_VERIFY_CHECK_DELAY = 0.05
-
-local HIGHLIGHT_ANCHOR_WAIT = 0.5
-
-local GETTING_UP_TIMEOUT = 5
-local GETTING_UP_CHECK_DELAY = 0.05
-
-local TWEEN_SPEED = 800
-local TWEEN_TIMEOUT = 10
-local AFTER_CARRY_DELAY = 0.1
-local GUARD_WAIT = 0.5
-
-local function GetEggPivot(Egg)
-    if not Egg or not Egg:IsA("Model") then
-        return nil
-    end
-
-    local Success, Pivot = pcall(function()
-        return Egg.WorldPivot
-    end)
 
     if Success and Pivot then
-        return Pivot
+
+        return Pivot.Position
+
     end
 
+elseif Object:IsA("BasePart") then
+
+    return Object.Position
+
+end
+
+
+return nil
+
+
+end
+
+--==================================================
+-- EGG WORLD PIVOT
+--==================================================
+
+local function GetEggPivot(
+Egg
+)
+
+
+if not Egg
+    or not Egg:IsA("Model") then
+
+    return nil
+
+end
+
+
+local Success,
+    Pivot =
+    pcall(function()
+
+        return Egg.WorldPivot
+
+    end)
+
+
+if Success and Pivot then
+    return Pivot
+end
+
+
+return nil
+
+
+end
+
+local function GetEggPosition(
+Egg
+)
+
+
+local Pivot =
+    GetEggPivot(
+        Egg
+    )
+
+
+if not Pivot then
     return nil
 end
 
-local function GetEggPosition(Egg)
-    local Pivot = GetEggPivot(Egg)
-    return Pivot and Pivot.Position or nil
+
+return Pivot.Position
+
+
 end
 
-local function GetFirstAreaSlotKey(Egg)
-    if not Egg then
-        return nil
+--==================================================
+-- VALID EGG
+--==================================================
+
+local function IsValidEgg(
+Object
+)
+
+
+if not Object then
+    return false
+end
+
+
+if not Object:IsA("Model") then
+    return false
+end
+
+
+if not Object.Parent then
+    return false
+end
+
+
+return GetEggPosition(Object) ~= nil
+
+
+end
+
+--==================================================
+-- EGG FOLDER
+--==================================================
+
+local function GetEggFolder()
+
+
+return Workspace:FindFirstChild(
+    EGG_FOLDER_NAME
+)
+
+
+end
+
+--==================================================
+-- SLOT KEY
+--==================================================
+
+local function GetFirstAreaSlotKey(
+Egg
+)
+
+
+if not Egg then
+    return nil
+end
+
+
+local Attribute =
+    Egg:GetAttribute(
+        "FirstAreaSlotKey"
+    )
+
+
+if typeof(Attribute) == "string"
+    and Attribute ~= "" then
+
+    return Attribute
+
+end
+
+
+if Egg.Parent then
+
+    local ParentAttribute =
+        Egg.Parent:GetAttribute(
+            "FirstAreaSlotKey"
+        )
+
+
+    if typeof(ParentAttribute) == "string"
+        and ParentAttribute ~= "" then
+
+        return ParentAttribute
+
     end
 
-    local Attribute = Egg:GetAttribute("FirstAreaSlotKey")
-    if typeof(Attribute) == "string" and Attribute ~= "" then
-        return Attribute
-    end
+end
 
-    if Egg.Parent then
-        local ParentAttribute = Egg.Parent:GetAttribute("FirstAreaSlotKey")
-        if typeof(ParentAttribute) == "string" and ParentAttribute ~= "" then
-            return ParentAttribute
+
+local UID =
+    Egg.Name
+
+
+local SlotKey =
+    string.match(
+        UID,
+        "([%w]+:Slot_%d+)$"
+    )
+
+
+if SlotKey then
+    return SlotKey
+end
+
+
+return nil
+
+
+end
+
+--==================================================
+-- FIND NEAREST EGG
+-------------------
+
+-- WORLD PIVOT X TERKECIL
+--==================================================
+
+local function GetNearestEgg()
+
+
+local Folder =
+    GetEggFolder()
+
+
+if not Folder then
+
+    warn(
+        "[NEAREST] AreaEggSlotsClient tidak ditemukan"
+    )
+
+    return nil
+
+end
+
+
+local BestEgg =
+    nil
+
+local BestX =
+    math.huge
+
+local Seen =
+    {}
+
+
+for _, Object in ipairs(
+    Folder:GetDescendants()
+) do
+
+    if IsValidEgg(Object)
+        and not Seen[Object] then
+
+        Seen[Object] =
+            true
+
+
+        local Position =
+            GetEggPosition(
+                Object
+            )
+
+
+        if Position
+            and Position.X < BestX then
+
+            BestX =
+                Position.X
+
+            BestEgg =
+                Object
+
         end
+
     end
 
-    local UID = Egg.Name
-    return string.match(UID, "([%w]+:Slot_%d+)$")
 end
 
-local function IsValidFieldEgg(Object)
-    return Object
-        and Object:IsA("Model")
-        and Object.Parent ~= nil
-        and GetEggPosition(Object) ~= nil
+
+if BestEgg then
+
+    print(
+        "[NEAREST]",
+        BestEgg.Name,
+        "| X:",
+        BestX
+    )
+
+else
+
+    print(
+        "[NEAREST] NO EGG"
+    )
+
 end
 
-local function GetFieldEggFolder()
-    return Workspace:FindFirstChild(EGG_FOLDER_NAME)
-end
 
---==================================================
--- NEAREST X TERKECIL
---==================================================
+return BestEgg
 
-local function GetBestEgg()
-    local Folder = GetFieldEggFolder()
-    if not Folder then
-        warn("[AUTO EGG] EGG FOLDER TIDAK DITEMUKAN:", EGG_FOLDER_NAME)
-        return nil
-    end
 
-    local BestEgg = nil
-    local BestX = math.huge
-    local Seen = {}
-
-    for _, Object in ipairs(Folder:GetDescendants()) do
-        if IsValidFieldEgg(Object) and not Seen[Object] then
-            Seen[Object] = true
-
-            local Position = GetEggPosition(Object)
-            if Position and Position.X < BestX then
-                BestX = Position.X
-                BestEgg = Object
-            end
-        end
-    end
-
-    if BestEgg then
-        print("[AUTO EGG] NEAREST:", BestEgg.Name, "| X:", BestX)
-    else
-        print("[AUTO EGG] NO FIELD EGG")
-    end
-
-    return BestEgg
 end
 
 --==================================================
--- HIGHLIGHT EGG
+-- FIND HIGHLIGHT
+-----------------
+
+-- PENTING:
+-- FUNGSI INI DIPAKAI SEBELUM AUTO EGG LITE
+-------------------------------------------
+
+-- JIKA TIDAK ADA HIGHLIGHT:
+-- AUTO EGG LITE TIDAK AKAN DIMULAI
 --==================================================
 
 local function GetHighlightedEgg()
-    local Folder = GetFieldEggFolder()
-    if not Folder then
-        warn("[HIGHLIGHT] AreaEggSlotsClient tidak ditemukan")
-        return nil
-    end
 
-    for _, Object in ipairs(Folder:GetDescendants()) do
-        if Object.ClassName == HIGHLIGHT_CLASS_NAME then
-            local Enabled = true
 
-            if REQUIRE_HIGHLIGHT_ENABLED then
-                local Success, Value = pcall(function()
-                    return Object.Enabled
-                end)
-                Enabled = Success and Value or false
-            end
+local Folder =
+    GetEggFolder()
 
-            if Enabled then
-                local Current = Object.Parent
 
-                while Current and Current ~= Folder do
-                    if Current:IsA("Model") and IsValidFieldEgg(Current) then
-                        print("[HIGHLIGHT] TARGET:", Current.Name, "| X:", GetEggPosition(Current).X)
-                        return Current
-                    end
-                    Current = Current.Parent
-                end
-            end
-        end
-    end
+if not Folder then
 
-    print("[HIGHLIGHT] TIDAK ADA EGG YANG DI-HIGHLIGHT")
     return nil
+
+end
+
+
+for _, Object in ipairs(
+    Folder:GetDescendants()
+) do
+
+    if Object.ClassName ==
+        HIGHLIGHT_CLASS_NAME then
+
+
+        local Enabled =
+            true
+
+
+        if REQUIRE_HIGHLIGHT_ENABLED then
+
+            local Success,
+                Value =
+                pcall(function()
+
+                    return Object.Enabled
+
+                end)
+
+
+            if not Success then
+
+                Enabled =
+                    false
+
+            else
+
+                Enabled =
+                    Value
+
+            end
+
+        end
+
+
+        if Enabled then
+
+            local Current =
+                Object.Parent
+
+
+            while Current
+                and Current ~= Folder do
+
+                if Current:IsA("Model")
+                    and IsValidEgg(Current) then
+
+                    print(
+                        "[HIGHLIGHT] FOUND:",
+                        Current.Name
+                    )
+
+                    return Current
+
+                end
+
+
+                Current =
+                    Current.Parent
+
+            end
+
+        end
+
+    end
+
+end
+
+
+return nil
+
+
 end
 
 --==================================================
--- TWEEN POSITION
+-- HAS HIGHLIGHT
 --==================================================
 
-local function TweenToPosition(TargetPosition, LockName)
-    if not TargetPosition then
-        return false
-    end
+local function HasAnyHighlight()
 
-    local Root = GetRoot()
-    if not Root then
-        return false
-    end
 
-    local Distance = (Root.Position - TargetPosition).Magnitude
-    if Distance <= REACH_DISTANCE then
-        return true
-    end
+local Egg =
+    GetHighlightedEgg()
 
-    local Duration = math.max(Distance / TWEEN_SPEED, 0.05)
 
-    print("[TWEEN]", LockName or "AUTO", "| DIST:", math.floor(Distance * 100) / 100, "| TIME:", math.floor(Duration * 100) / 100)
+return Egg ~= nil
 
-    local Tween = game:GetService("TweenService"):Create(
-        Root,
-        TweenInfo.new(Duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
-        {CFrame = CFrame.new(TargetPosition)}
+
+end
+
+--==================================================
+-- TWEEN NEAREST EGG
+--==================================================
+
+local function TweenToEgg(
+Egg
+)
+
+
+if not Egg
+    or not Egg.Parent then
+
+    return false
+
+end
+
+
+local Position =
+    GetEggPosition(
+        Egg
     )
 
-    local Finished = false
-    local Success = false
-    local Connection = Tween.Completed:Connect(function(State)
-        Finished = true
-        Success = State == Enum.PlaybackState.Completed
-    end)
 
-    Tween:Play()
-    local StartTime = tick()
-
-    while not Finished do
-        if not GetRoot() then
-            Tween:Cancel()
-            break
-        end
-
-        if tick() - StartTime > TWEEN_TIMEOUT then
-            warn("[TWEEN] TIMEOUT:", LockName or "AUTO")
-            Tween:Cancel()
-            break
-        end
-
-        task.wait()
-    end
-
-    Connection:Disconnect()
-    return Success
-end
-
-local function TweenToFieldEgg(Egg)
-    local Position = GetEggPosition(Egg)
-    if not Position then
-        return false
-    end
-    return TweenToPosition(Position, "FIELD:NEAREST")
-end
-
-local function TweenToGuardNew()
-    local Areas = Workspace:FindFirstChild("__OBJECTS")
-    Areas = Areas and Areas:FindFirstChild("Areas")
-    local GuardAreas = Areas and Areas:FindFirstChild("GuardAreas")
-    local Forest = GuardAreas and GuardAreas:FindFirstChild("Forest")
-    local Guard = Forest and Forest:FindFirstChild("Guard")
-
-    local Position = GetPosition(Guard)
-    if not Position then
-        warn("[GUARD] POSISI GUARD TIDAK DITEMUKAN")
-        return false
-    end
-
-    return TweenToPosition(Position, "FIELD:GUARD")
-end
-
-local function TweenToStartAreaNew()
-    local Areas = Workspace:FindFirstChild("__OBJECTS")
-    Areas = Areas and Areas:FindFirstChild("Areas")
-    local StartArea = Areas and Areas:FindFirstChild(START_AREA_NAME)
-
-    local Position = GetPosition(StartArea)
-    if not Position then
-        warn("[STARTAREA] POSISI TIDAK DITEMUKAN")
-        return false
-    end
-
-    return TweenToPosition(Position, "FIELD:STARTAREA")
-end
-
---==================================================
--- TELEPORT HIGHLIGHT EGG + ANCHOR
---==================================================
-
-local function TeleportToHighlightedEgg(Egg)
-    local Root = GetRoot()
-    local Position = GetEggPosition(Egg)
-
-    if not Root or not Position then
-        return false
-    end
-
-    Root.CFrame = CFrame.new(Position)
-    Root.Anchored = true
-
-    print("[TELEPORT HIGHLIGHT]", Egg.Name)
-    print("[TELEPORT] ROOT ANCHORED = TRUE")
-
-    return true
-end
-
-local function UnanchorRootNew()
-    local Root = GetRoot()
-    if Root then
-        Root.Anchored = false
-        print("[ROOT] UNANCHORED")
-    end
-end
-
---==================================================
--- WAIT GETTINGUP
---==================================================
-
-local function WaitForGettingUpNew()
-    local Humanoid = GetHumanoid()
-    if not Humanoid then
-        return false
-    end
-
-    local StartTime = tick()
-
-    print("[PHYSIC] WAITING FOR GETTINGUP...")
-
-    while tick() - StartTime < GETTING_UP_TIMEOUT do
-        Humanoid = GetHumanoid()
-        if not Humanoid or not GetRoot() then
-            return false
-        end
-
-        local State = Humanoid:GetState()
-        print("[PHYSIC] STATE:", State.Name)
-
-        if State == Enum.HumanoidStateType.GettingUp then
-            print("[PHYSIC] GETTINGUP DETECTED")
-            return true
-        end
-
-        task.wait(GETTING_UP_CHECK_DELAY)
-    end
-
-    warn("[PHYSIC] GETTINGUP TIMEOUT")
+if not Position then
     return false
 end
 
+
+print(
+    "[TWEEN EGG]",
+    Egg.Name,
+    "| X:",
+    Position.X
+)
+
+
+return TweenToPosition(
+    Position
+)
+
+
+end
+
 --==================================================
--- VERIFY HIGHLIGHT CARRY
+-- TWEEN GUARD
 --==================================================
 
-local function VerifyFieldEggCarry(Egg)
-    if not Egg then
-        return false
-    end
+local function TweenToGuard()
 
-    local Folder = GetFieldEggFolder()
-    if not Folder then
-        return false
-    end
 
-    local UID = Egg.Name
-    local StartTime = tick()
+local Areas =
+    Workspace
+        :WaitForChild("__OBJECTS")
+        :WaitForChild("Areas")
 
-    while tick() - StartTime < CARRY_VERIFY_TIMEOUT do
-        if not Egg.Parent then
-            print("[VERIFY] SUCCESS - EGG OBJECT HILANG:", UID)
-            return true
-        end
 
-        local StillExists = false
-        for _, Object in ipairs(Folder:GetDescendants()) do
-            if Object:IsA("Model") and Object.Name == UID then
-                StillExists = true
-                break
-            end
-        end
+local Guard =
+    Areas
+        :WaitForChild("GuardAreas")
+        :WaitForChild("Forest")
+        :WaitForChild("Guard")
 
-        if not StillExists then
-            print("[VERIFY] SUCCESS - UID HILANG DARI AreaEggSlotsClient:", UID)
-            return true
-        end
 
-        task.wait(CARRY_VERIFY_CHECK_DELAY)
-    end
+local TargetPosition =
+    GetObjectPosition(
+        Guard
+    )
 
-    warn("[VERIFY] FAILED - EGG MASIH ADA:", UID)
+
+if not TargetPosition then
     return false
 end
 
---==================================================
 
--- CARRY FIELD EGG
---
--- NEAREST: UID + FirstAreaSlotKey
--- HIGHLIGHT: UID ONLY
+print(
+    "[GUARD] TWEEN KE GUARD"
+)
 
---==================================================
 
-local function CarryEgg(Egg, UseSlotKey)
-    if not Egg or not Egg.Parent then
-        return false
-    end
+return TweenToPosition(
+    TargetPosition
+)
 
-    local UID = Egg.Name
-    local Payload = { ["Uid"] = UID }
 
-    if UseSlotKey then
-        local SlotKey = GetFirstAreaSlotKey(Egg)
-        if not SlotKey then
-            warn("[AUTO EGG] FirstAreaSlotKey TIDAK DITEMUKAN:", UID)
-            return false
-        end
-        Payload["FirstAreaSlotKey"] = SlotKey
-        print("[AUTO EGG] CARRY NEAREST | UID:", UID, "| SLOT:", SlotKey)
-    else
-        print("[AUTO EGG] CARRY HIGHLIGHT | UID:", UID, "| UID ONLY")
-    end
-
-    local Success, Result = pcall(function()
-        return CarryEggRemote:InvokeServer(Payload)
-    end)
-
-    print("[AUTO EGG] CARRY REMOTE:", Success, Result)
-
-    if not Success or Result == false then
-        return false
-    end
-
-    return true
 end
 
 --==================================================
-
--- PARASITE
-
+-- TWEEN STARTAREA
 --==================================================
 
+local function TweenToStartArea()
 
+
+local Areas =
+    Workspace
+        :WaitForChild("__OBJECTS")
+        :WaitForChild("Areas")
+
+
+local StartArea =
+    Areas:WaitForChild(
+        "StartArea"
+    )
+
+
+local TargetPosition =
+    GetObjectPosition(
+        StartArea
+    )
+
+
+if not TargetPosition then
+    return false
+end
+
+
+print(
+    "[STARTAREA] TWEEN KE STARTAREA"
+)
+
+
+return TweenToPosition(
+    TargetPosition
+)
+
+
+end
+
+--==================================================
+-- TELEPORT HIGHLIGHT
+--==================================================
+
+local function TeleportToHighlightedEgg(
+Egg
+)
+
+
+if not Egg
+    or not Egg.Parent then
+
+    return false
+
+end
+
+
+local Root =
+    GetRoot()
+
+
+if not Root then
+    return false
+end
+
+
+local Position =
+    GetEggPosition(
+        Egg
+    )
+
+
+if not Position then
+    return false
+end
+
+
+print(
+    "[HIGHLIGHT TELEPORT]",
+    Egg.Name,
+    "| X:",
+    Position.X
+)
+
+
+Root.CFrame =
+    CFrame.new(
+        Position
+    )
+
+
+Root.Anchored =
+    true
+
+
+print(
+    "[ROOT] ANCHORED"
+)
+
+
+return true
+
+
+end
+
+--==================================================
+-- UNANCHOR
+--==================================================
+
+local function UnanchorRoot()
+
+
+local Root =
+    GetRoot()
+
+
+if Root then
+
+    Root.Anchored =
+        false
+
+
+    print(
+        "[ROOT] UNANCHORED"
+    )
+
+end
+
+
+end
+
+--==================================================
+-- WAIT GETTING UP
+--==================================================
+
+local function WaitForGettingUp()
+
+
+local Humanoid =
+    GetHumanoid()
+
+
+if not Humanoid then
+    return false
+end
+
+
+print(
+    "[PHYSIC] WAIT GETTINGUP"
+)
+
+
+local StartTime =
+    tick()
+
+
+while tick() - StartTime <
+    GETTING_UP_TIMEOUT do
+
+
+    local State =
+        Humanoid:GetState()
+
+
+    if State ==
+        Enum.HumanoidStateType.GettingUp then
+
+        print(
+            "[PHYSIC] GETTINGUP DETECTED"
+        )
+
+        return true
+
+    end
+
+
+    task.wait(
+        GETTING_UP_CHECK_DELAY
+    )
+
+end
+
+
+warn(
+    "[PHYSIC] GETTINGUP TIMEOUT"
+)
+
+
+return false
+
+
+end
+
+--==================================================
+-- CARRY NEAREST
+----------------
+
+-- UID + FIRST AREA SLOT KEY
+--==================================================
+
+local function CarryNearestEgg(
+Egg
+)
+
+
+if not Egg
+    or not Egg.Parent then
+
+    return false
+
+end
+
+
+local UID =
+    Egg.Name
+
+
+local FirstAreaSlotKey =
+    GetFirstAreaSlotKey(
+        Egg
+    )
+
+
+if not FirstAreaSlotKey then
+
+    warn(
+        "[CARRY NEAREST] SLOT KEY TIDAK DITEMUKAN"
+    )
+
+    return false
+
+end
+
+
+local args = {
+    [1] = {
+
+        ["FirstAreaSlotKey"] =
+            FirstAreaSlotKey,
+
+        ["Uid"] =
+            UID
+
+    }
+}
+
+
+print(
+    "[CARRY NEAREST]",
+    UID,
+    FirstAreaSlotKey
+)
+
+
+local Success,
+    Result =
+    pcall(function()
+
+        return CarryEggRemote:
+            InvokeServer(
+                unpack(args)
+            )
+
+    end)
+
+
+print(
+    "[CARRY NEAREST] RESULT:",
+    Success,
+    Result
+)
+
+
+if not Success
+    or Result == false then
+
+    return false
+
+end
+
+
+return true
+
+
+end
+
+--==================================================
+-- CARRY HIGHLIGHT
+------------------
+
+-- UID ONLY
+--==================================================
+
+local function CarryHighlightedEgg(
+Egg
+)
+
+
+if not Egg
+    or not Egg.Parent then
+
+    return false
+
+end
+
+
+local UID =
+    Egg.Name
+
+
+local args = {
+    [1] = {
+        ["Uid"] =
+            UID
+    }
+}
+
+
+print(
+    "[CARRY HIGHLIGHT]",
+    UID
+)
+
+
+local Success,
+    Result =
+    pcall(function()
+
+        return CarryEggRemote:
+            InvokeServer(
+                unpack(args)
+            )
+
+    end)
+
+
+print(
+    "[CARRY HIGHLIGHT] RESULT:",
+    Success,
+    Result
+)
+
+
+if not Success
+    or Result == false then
+
+    return false
+
+end
+
+
+return true
+
+
+end
+
+--==================================================
+-- VERIFY CARRY
+---------------
+
+-- EGG HARUS HILANG DARI
+-- AreaEggSlotsClient
+--==================================================
+
+local function VerifyCarry(
+Egg
+)
+
+
+if not Egg then
+    return false
+end
+
+
+local Folder =
+    GetEggFolder()
+
+
+if not Folder then
+    return false
+end
+
+
+local UID =
+    Egg.Name
+
+
+local StartTime =
+    tick()
+
+
+print(
+    "[VERIFY] WAIT EGG HILANG:",
+    UID
+)
+
+
+while tick() - StartTime <
+    CARRY_VERIFY_TIMEOUT do
+
+
+    if not Egg.Parent then
+
+        print(
+            "[VERIFY] SUCCESS - OBJECT HILANG"
+        )
+
+        return true
+
+    end
+
+
+    local StillExists =
+        false
+
+
+    for _, Object in ipairs(
+        Folder:GetDescendants()
+    ) do
+
+        if Object:IsA("Model")
+            and Object.Name == UID then
+
+            StillExists =
+                true
+
+            break
+
+        end
+
+    end
+
+
+    if not StillExists then
+
+        print(
+            "[VERIFY] SUCCESS - UID HILANG"
+        )
+
+        return true
+
+    end
+
+
+    task.wait(
+        CARRY_VERIFY_CHECK_DELAY
+    )
+
+end
+
+
+warn(
+    "[VERIFY] FAILED:",
+    UID
+)
+
+
+return false
+
+
+end
+
+--==================================================
+-- FORCE DOFF TREADMILL
+--==================================================
+
+local function ForceDoffTreadmill()
+
+
+pcall(function()
+
+    TreadmillDoffRemote:
+        InvokeServer()
+
+end)
+
+
+TreadmillRunning =
+    false
+
+
+task.wait(
+    0.2
+)
+
+
+end
+
+--==================================================
+-- PARASITE VISUAL
+--==================================================
 
 local function FindMonsterParasiteVisual()
 
 
-
-    local Store =
-
-        Workspace:FindFirstChild(
-
-            "ottoko_store"
-
-        )
+local Store =
+    Workspace:FindFirstChild(
+        "ottoko_store"
+    )
 
 
-
-
-
-    if not Store then
-
-        return nil
-
-    end
-
-
-
-
-
-    for _, Object in ipairs(
-
-        Store:GetDescendants()
-
-    ) do
-
-
-
-        if Object.Name ==
-
-            "MonsterParasiteVisual" then
-
-
-
-            print(
-
-                "[PARASITE] FOUND:",
-
-                Object:GetFullName()
-
-            )
-
-
-
-            return Object
-
-
-
-        end
-
-
-
-    end
-
-
-
-
-
+if not Store then
     return nil
+end
 
 
+for _, Object in ipairs(
+    Store:GetDescendants()
+) do
+
+    if Object.Name ==
+        "MonsterParasiteVisual" then
+
+        return Object
+
+    end
 
 end
 
 
+return nil
 
 
+end
+
+--==================================================
+-- PARASITE MONSTER
+--==================================================
 
 local function FindMonsterParasiteMonster()
 
 
-
-    local Folder =
-
-        Workspace:FindFirstChild(
-
-            "MonsterParasiteMonsters"
-
-        )
+local Folder =
+    Workspace:FindFirstChild(
+        "MonsterParasiteMonsters"
+    )
 
 
-
-
-
-    if not Folder then
-
-        return nil
-
-    end
-
-
-
-
-
-    for _, Object in ipairs(
-
-        Folder:GetChildren()
-
-    ) do
-
-
-
-        if Object:IsA(
-
-            "Model"
-
-        ) then
-
-
-
-            return Object
-
-
-
-        end
-
-
-
-    end
-
-
-
-
-
+if not Folder then
     return nil
+end
 
 
+for _, Object in ipairs(
+    Folder:GetChildren()
+) do
+
+    if Object:IsA("Model") then
+
+        return Object
+
+    end
 
 end
 
 
+return nil
 
 
+end
+
+--==================================================
+-- FEED PARASITE
+--==================================================
 
 local function CheckAndFeedParasite()
 
 
-
-    local Visual =
-
-        FindMonsterParasiteVisual()
+local Visual =
+    FindMonsterParasiteVisual()
 
 
+if not Visual then
+    return false
+end
 
 
-
-    if not Visual then
-
-        return false
-
-    end
+local Monster =
+    FindMonsterParasiteMonster()
 
 
+if not Monster then
+    return true
+end
 
 
-
-    print(
-
-        "[PARASITE] DETECTED"
-
+local Position =
+    GetObjectPosition(
+        Monster
     )
 
 
+if not Position then
+    return true
+end
 
 
-
-    local Monster =
-
-        FindMonsterParasiteMonster()
-
-
-
-
-
-    if not Monster then
-
-
-
-        warn(
-
-            "[PARASITE] MONSTER TIDAK DITEMUKAN"
-
-        )
-
-
-
-        return true
-
-
-
-    end
-
-
-
-
-
-    local Position =
-
-        GetPosition(
-
-            Monster
-
-        )
-
-
-
-
-
-    if not Position then
-
-        return true
-
-    end
-
-
-
-
-
-    local Reached =
-
-        AutoFlyToPosition(
-
-            Position,
-
-            REACH_DISTANCE,
-
-            "PARASITE_FEED"
-
-        )
-
-
-
-
-
-    if not Reached then
-
-        return true
-
-    end
-
-
-
-
-
-    task.wait(
-
-        0.2
-
-    )
-
-
-
-
-
-    local Success,
-
-        Result =
-
-        pcall(function()
-
-
-
-            return MonsterFeedRemote:
-
-                InvokeServer()
-
-
-
-        end)
-
-
-
-
-
-    print(
-
-        "[PARASITE] FEED:",
-
-        Success,
-
-        Result
-
-    )
-
-
-
-
+if not TweenToPosition(
+    Position
+) then
 
     return true
 
+end
+
+
+task.wait(
+    0.2
+)
+
+
+local Success,
+    Result =
+    pcall(function()
+
+        return MonsterFeedRemote:
+            InvokeServer()
+
+    end)
+
+
+print(
+    "[PARASITE] FEED:",
+    Success,
+    Result
+)
+
+
+return true
 
 
 end
 
-
-
-
-
+--==================================================
+-- GET OWN PLOT
 --==================================================
 
--- PLACED EGGS
-
---==================================================
+local function GetMyPlot()
 
 
-
-local UserId =
-
-    tostring(
-
-        LocalPlayer.UserId
-
+local Plots =
+    Workspace:FindFirstChild(
+        "Plots"
     )
 
 
-
-
-
-local TriggeredPrompts = {}
-
-
-
-
-
-local function GetActiveRenders()
-
-
-
-    local Renders = {}
-
-
-
-
-
-    for _, Object in ipairs(
-
-        Workspace:GetChildren()
-
-    ) do
-
-
-
-        if Object.Name ==
-
-            "PlacedEggRenders"
-
-
-
-            and
-
-            #Object:GetChildren() > 0 then
-
-
-
-
-
-            table.insert(
-
-                Renders,
-
-                Object
-
-            )
-
-
-
-        end
-
-
-
-    end
-
-
-
-
-
-    return Renders
-
-
-
-end
-
-
-
-
-
-local function IsMyEgg(
-
-    Egg
-
-)
-
-
-
-    if not Egg then
-
-        return false
-
-    end
-
-
-
-
-
-    return string.match(
-
-        Egg.Name,
-
-        "^" .. UserId .. "_"
-
-    ) ~= nil
-
-
-
-end
-
-
-
-
-
-local function GetPlacedEggPosition(
-
-    Egg
-
-)
-
-
-
-    if not Egg
-
-        or not Egg.Parent then
-
-
-
-        return nil
-
-
-
-    end
-
-
-
-
-
-    if Egg:IsA("BasePart") then
-
-        return Egg.Position
-
-    end
-
-
-
-
-
-    if Egg:IsA("Model") then
-
-
-
-        local Success,
-
-            Pivot =
-
-            pcall(function()
-
-
-
-                return Egg:GetPivot()
-
-
-
-            end)
-
-
-
-
-
-        if Success
-
-            and Pivot then
-
-
-
-            return Pivot.Position
-
-
-
-        end
-
-
-
-    end
-
-
-
-
-
-    local Part =
-
-        Egg:FindFirstChildWhichIsA(
-
-            "BasePart",
-
-            true
-
-        )
-
-
-
-
-
-    if Part then
-
-        return Part.Position
-
-    end
-
-
-
-
-
+if not Plots then
     return nil
-
-
-
 end
 
 
-
-
-
-local function GetMyPlacedEggs()
-
-
-
-    local Eggs = {}
-
-    local Seen = {}
-
-
-
-
-
-    for _, Render in ipairs(
-
-        GetActiveRenders()
-
-    ) do
-
-
-
-
-
-        for _, Egg in ipairs(
-
-            Render:GetChildren()
-
-        ) do
-
-
-
-
-
-            if IsMyEgg(Egg)
-
-                and not Seen[Egg] then
-
-
-
-                Seen[Egg] = true
-
-
-
-                table.insert(
-
-                    Eggs,
-
-                    Egg
-
-                )
-
-
-
-            end
-
-
-
-        end
-
-
-
-    end
-
-
-
-
-
-    return Eggs
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- TRIGGER PROMPTS
-
---==================================================
-
-
-
-local function TriggerNearbyPrompts()
-
-
-
-    local Root =
-
-        GetRoot()
-
-
-
-
-
-    if not Root then
-
-        return
-
-    end
-
-
-
-
-
-    for _, Prompt in ipairs(
-
-        Workspace:GetDescendants()
-
-    ) do
-
-
-
-
-
-        if Prompt:IsA(
-
-            "ProximityPrompt"
-
-        )
-
-            and Prompt.Enabled then
-
-
-
-
-
-            local Part =
-
-                Prompt.Parent
-
-
-
-
-
-            if Part
-
-                and Part:IsA(
-
-                    "BasePart"
-
-                ) then
-
-
-
-
-
-                local Distance =
-
-                    (
-
-                        Root.Position
-
-                        - Part.Position
-
-                    ).Magnitude
-
-
-
-
-
-                if Distance <
-
-                    MAX_PROMPT_DISTANCE then
-
-
-
-
-
-                    if not TriggeredPrompts[
-
-                        Prompt
-
-                    ] then
-
-
-
-
-
-                        TriggeredPrompts[
-
-                            Prompt
-
-                        ] = true
-
-
-
-
-
-                        print(
-
-                            "[HATCH] TRIGGER:",
-
-                            Prompt:GetFullName()
-
-                        )
-
-
-
-
-
-                        pcall(function()
-
-
-
-                            fireproximityprompt(
-
-                                Prompt
-
-                            )
-
-
-
-                        end)
-
-
-
-                    end
-
-
-
-
-
-                else
-
-
-
-                    TriggeredPrompts[
-
-                        Prompt
-
-                    ] = nil
-
-
-
-                end
-
-
-
-            end
-
-
-
-        end
-
-
-
-    end
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- HATCH ONE
-
---==================================================
-
-
-
-local function HatchOneEgg(
-
-    Egg
-
-)
-
-
-
-    if not Egg
-
-        or not Egg.Parent then
-
-
-
-        warn(
-
-            "[HATCH] EGG SUDAH TIDAK ADA"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    print(
-
-        "=========================================="
-
-    )
-
-
-
-    print(
-
-        "[HATCH] START:",
-
-        Egg.Name
-
-    )
-
-
-
-
-
-    local Position =
-
-        GetPlacedEggPosition(
-
-            Egg
-
-        )
-
-
-
-
-
-    if not Position then
-
-
-
-        warn(
-
-            "[HATCH] POSITION TIDAK DITEMUKAN"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    local Reached =
-
-        AutoFlyToPosition(
-
-            Position,
-
-            WALK_TO_EGG_DISTANCE,
-
-            "HATCH:" .. Egg.Name
-
-        )
-
-
-
-
-
-    if not Reached then
-
-
-
-        warn(
-
-            "[HATCH] GAGAL MENUJU EGG"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    TriggeredPrompts = {}
-
-
-
-
-
-    local StartTime =
-
-        tick()
-
-
-
-
-
-    while tick() - StartTime <
-
-        HATCH_MAX_TIME do
-
-
-
-
-
-        if not Egg.Parent then
-
-
-
-            print(
-
-                "[HATCH] SUCCESS:",
-
-                Egg.Name
-
-            )
-
-
-
-            return true
-
-
-
-        end
-
-
-
-
-
-        TriggerNearbyPrompts()
-
-
-
-
-
-        task.wait(
-
-            PROMPT_CHECK_DELAY
-
-        )
-
-
-
-    end
-
-
-
-
-
-    warn(
-
-        "[HATCH] TIMEOUT:",
-
-        Egg.Name
-
-    )
-
-
-
-
-
-    return false
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- HATCH ALL
-
---
-
--- SNAPSHOT 1X
-
---
-
--- DIPANGGIL HANYA SEBELUM
-
--- INVENTORY EGG PROCESS.
-
---
-
--- TIDAK DIPANGGIL SETELAH FUSE.
-
--- TIDAK DIPANGGIL SETELAH FIELD EGG.
-
---==================================================
-
-
-
-local function HatchAllPlacedEggs()
-
-
-
-    if HatchRunning then
-
-
-
-        print(
-
-            "[HATCH] ALREADY RUNNING"
-
-        )
-
-
-
-        return
-
-
-
-    end
-
-
-
-
-
-    HatchRunning = true
-
-
-
-
-
-    local Success,
-
-        Error =
-
-        xpcall(function()
-
-
-
-
-
-            --======================================
-
-            -- SCAN 1X
-
-            --======================================
-
-
-
-            local Eggs =
-
-                GetMyPlacedEggs()
-
-
-
-
-
-            local EggCount =
-
-                #Eggs
-
-
-
-
-
-            print(
-
-                "=========================================="
-
-            )
-
-
-
-            print(
-
-                "[HATCH] SNAPSHOT TOTAL:",
-
-                EggCount
-
-            )
-
-
-
-            print(
-
-                "[HATCH] SCAN HANYA 1X"
-
-            )
-
-
-
-            print(
-
-                "=========================================="
-
-            )
-
-
-
-
-
-            if EggCount == 0 then
-
-
-
-                print(
-
-                    "[HATCH] NO OWN EGG"
-
-                )
-
-
-
-                return
-
-
-
-            end
-
-
-
-
-
-            --======================================
-
-            -- PROCESS SNAPSHOT
-
-            --======================================
-
-
-
-            for Index, Egg in ipairs(
-
-                Eggs
-
-            ) do
-
-
-
-
-
-                print(
-
-                    "=========================================="
-
-                )
-
-
-
-                print(
-
-                    "[HATCH] PROCESS:",
-
-                    Index,
-
-                    "/",
-
-                    EggCount
-
-                )
-
-
-
-
-
-                if Egg
-
-                    and Egg.Parent then
-
-
-
-                    HatchOneEgg(
-
-                        Egg
-
-                    )
-
-
-
-                else
-
-
-
-                    warn(
-
-                        "[HATCH] EGG SUDAH HILANG"
-
-                    )
-
-
-
-                end
-
-
-
-
-
-                if Index < EggCount then
-
-
-
-                    task.wait(
-
-                        0.5
-
-                    )
-
-
-
-                end
-
-
-
-            end
-
-
-
-
-
-            print(
-
-                "=========================================="
-
-            )
-
-
-
-            print(
-
-                "[HATCH] SNAPSHOT HATCH COMPLETE"
-
-            )
-
-
-
-            print(
-
-                "[HATCH] TOTAL:",
-
-                EggCount
-
-            )
-
-
-
-            print(
-
-                "[HATCH] TIDAK SCAN ULANG"
-
-            )
-
-
-
-            print(
-
-                "=========================================="
-
-            )
-
-
-
-
-
-        end,
-
-        debug.traceback)
-
-
-
-
-
-    if not Success then
-
-
-
-        warn(
-
-            "[HATCH] ERROR:",
-
-            Error
-
-        )
-
-
-
-
-
-        StopFly()
-
-
-
-        MovementOwner =
-
-            nil
-
-
-
-    end
-
-
-
-
-
-    HatchRunning =
-
-        false
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- TREADMILL
-
---==================================================
-
-
-
-local function GetMyTreadmill()
-
+for Number =
+    MIN_PLOT,
+    MAX_PLOT do
 
 
     local Plot =
-
-        GetMyPlot()
-
-
-
-
-
-    if not Plot then
-
-        return nil
-
-    end
-
-
-
-
-
-    local Treadmill =
-
-        Plot:FindFirstChild(
-
-            TREADMILL_NAME,
-
-            true
-
+        Plots:FindFirstChild(
+            tostring(Number)
         )
 
 
+    if Plot then
+
+        local PlotSign =
+            Plot:FindFirstChild(
+                "PlotSign"
+            )
 
 
-
-    if Treadmill then
-
-
-
-        print(
-
-            "[TREADMILL] FOUND:",
-
-            Treadmill:GetFullName()
-
-        )
+        local PlayerPlotSign =
+            PlotSign
+            and PlotSign:FindFirstChild(
+                "PlayerPlotSign"
+            )
 
 
+        local Frame =
+            PlayerPlotSign
+            and PlayerPlotSign:FindFirstChild(
+                "Frame"
+            )
+
+
+        local PlayerName =
+            Frame
+            and Frame:FindFirstChild(
+                "PlayerName"
+            )
+
+
+        if PlayerName
+            and PlayerName.Text ==
+                LocalPlayer.Name then
+
+            return Plot
+
+        end
 
     end
-
-
-
-
-
-    return Treadmill
-
-
 
 end
 
 
+return nil
 
 
+end
 
-local function EnterTreadmill()
+--==================================================
+-- GET PLOT AREA
+--==================================================
+
+local function GetPlotArea(
+Plot
+)
 
 
+if not Plot then
+    return nil
+end
 
-    if TreadmillRunning then
 
-        return true
+local BiggestPart =
+    nil
+
+local BiggestArea =
+    0
+
+
+for _, Object in ipairs(
+    Plot:GetDescendants()
+) do
+
+    if Object:IsA("BasePart") then
+
+        local Name =
+            Object.Name:lower()
+
+
+        if not Name:find("sign")
+            and not Name:find("playername")
+            and not Name:find("deco")
+            and not Name:find("border")
+            and not Name:find("wall")
+            and not Name:find("fence") then
+
+
+            local Area =
+                Object.Size.X
+                * Object.Size.Z
+
+
+            if Area >
+                BiggestArea then
+
+                BiggestArea =
+                    Area
+
+                BiggestPart =
+                    Object
+
+            end
+
+        end
 
     end
 
+end
 
 
+return BiggestPart
 
 
-    local Treadmill =
+end
 
-        GetMyTreadmill()
+--==================================================
+-- RANDOM PLOT POSITION
+--==================================================
+
+local function GetRandomPosition(
+Plot,
+AreaPart
+)
 
 
+if not Plot
+    or not AreaPart then
+
+    return nil
+
+end
 
 
+local Size =
+    AreaPart.Size
 
-    if not Treadmill then
 
-
-
-        warn(
-
-            "[TREADMILL] TIDAK DITEMUKAN"
-
+local X =
+    math.random(
+        -math.floor(
+            Size.X / 2 - MARGIN
+        ),
+        math.floor(
+            Size.X / 2 - MARGIN
         )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    print(
-
-        "=========================================="
-
     )
 
 
-
-    print(
-
-        "[TREADMILL] ENTER"
-
+local Z =
+    math.random(
+        -math.floor(
+            Size.Z / 2 - MARGIN
+        ),
+        math.floor(
+            Size.Z / 2 - MARGIN
+        )
     )
 
 
-
-
-
-    local Reached =
-
-        FlyToObject(
-
-            Treadmill,
-
-            TREADMILL_FLY_DISTANCE,
-
-            "TREADMILL"
-
+local WorldPosition =
+    AreaPart.CFrame:
+    PointToWorldSpace(
+        Vector3.new(
+            X,
+            0,
+            Z
         )
-
-
-
-
-
-    if not Reached then
-
-
-
-        warn(
-
-            "[TREADMILL] GAGAL MENUJU TREADMILL"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    task.wait(
-
-        0.2
-
     )
 
 
+local PlotPivot =
+    Plot:GetPivot()
 
 
-
-    local Success,
-
-        Result =
-
-        pcall(function()
-
-
-
-            return TreadmillWearRemote:
-
-                InvokeServer()
-
-
-
-        end)
-
-
-
-
-
-    print(
-
-        "[TREADMILL] WEAR:",
-
-        Success,
-
-        Result
-
+local LocalPosition =
+    PlotPivot:
+    PointToObjectSpace(
+        WorldPosition
     )
 
 
+return Vector3.new(
+    LocalPosition.X,
+    FIXED_Y,
+    LocalPosition.Z
+)
 
 
+end
 
-    if Success then
+--==================================================
+-- PLACE EGG
+--==================================================
 
-
-
-        TreadmillRunning =
-
-            true
-
-
-
-
-
-        print(
-
-            "[TREADMILL] ENTERED"
-
-        )
+local function PlaceEggOnce(
+Tool,
+Plot
+)
 
 
+if not Tool then
+    return false
+end
 
 
-
-        return true
-
-
-
-    end
+local UID =
+    Tool:GetAttribute(
+        "UID"
+    )
 
 
-
-
+if typeof(UID) ~= "string"
+    or UID == "" then
 
     return false
 
+end
 
+
+local AreaPart =
+    GetPlotArea(
+        Plot
+    )
+
+
+if not AreaPart then
+    return false
+end
+
+
+local Position =
+    GetRandomPosition(
+        Plot,
+        AreaPart
+    )
+
+
+if not Position then
+    return false
+end
+
+
+local Success,
+    Result =
+    pcall(function()
+
+        return PlaceEggRemote:
+            InvokeServer({
+
+                ["Uid"] =
+                    UID,
+
+                ["LocalCFrame"] =
+                    CFrame.new(
+                        Position.X,
+                        FIXED_Y,
+                        Position.Z
+                    )
+
+            })
+
+    end)
+
+
+print(
+    "[PLACE] RESULT:",
+    Success,
+    Result
+)
+
+
+if not Success
+    or Result == false then
+
+    return false
 
 end
 
 
+return true
 
 
-
---==================================================
-
--- EXIT TREADMILL
+end
 
 --==================================================
+-- WAIT TOOL GONE
+--==================================================
+
+local function WaitToolGone(
+Tool,
+Timeout
+)
 
 
+local StartTime =
+    tick()
 
-ExitTreadmill = function()
+
+while tick() - StartTime <
+    Timeout do
 
 
+    if not Tool.Parent then
+        return true
+    end
 
-    if not TreadmillRunning then
+
+    if GetEquippedTool()
+        ~= Tool then
 
         return true
 
     end
 
 
-
-
-
-    print(
-
-        "[TREADMILL] EXIT"
-
+    task.wait(
+        0.1
     )
-
-
-
-
-
-    local Success,
-
-        Result =
-
-        pcall(function()
-
-
-
-            return TreadmillDoffRemote:
-
-                InvokeServer()
-
-
-
-        end)
-
-
-
-
-
-    print(
-
-        "[TREADMILL] DOFF:",
-
-        Success,
-
-        Result
-
-    )
-
-
-
-
-
-    if Success then
-
-
-
-        TreadmillRunning =
-
-            false
-
-
-
-
-
-        task.wait(
-
-            0.2
-
-        )
-
-
-
-    end
-
-
-
-
-
-    return Success
-
-
 
 end
 
 
+return false
 
 
-
---==================================================
-
--- FORCE DOFF BEFORE FIELD EGG
+end
 
 --==================================================
+-- PLACE FUSED EGG
+--==================================================
+
+local function PlaceFusedEgg(
+FusedEgg
+)
 
 
-
-local function ForceDoffBeforeStart()
-
-
-
-    print(
-
-        "=========================================="
-
-    )
+local Plot =
+    GetMyPlot()
 
 
-
-    print(
-
-        "[FIELD EGG] FORCE DOFF BEFORE START"
-
-    )
+if not Plot then
+    return false
+end
 
 
+if TreadmillRunning then
 
-
-
-    local Success,
-
-        Result =
-
-        pcall(function()
-
-
-
-            return TreadmillDoffRemote:
-
-                InvokeServer()
-
-
-
-        end)
-
-
-
-
-
-    print(
-
-        "[FIELD EGG] FORCE DOFF:",
-
-        Success,
-
-        Result
-
-    )
-
-
-
-
-
-    TreadmillRunning =
-
-        false
-
-
-
-
-
-    if not Success then
-
-
-
-        warn(
-
-            "[FIELD EGG] FORCE DOFF ERROR:",
-
-            Result
-
-        )
-
-
-
+    if not ExitTreadmill() then
         return false
+    end
+
+end
 
 
+if not TweenToPosition(
+    GetObjectPosition(Plot)
+) then
+
+    return false
+
+end
+
+
+local Tool =
+    GetEquippedTool()
+
+
+if not Tool
+    or Tool ~= FusedEgg then
+
+    return false
+
+end
+
+
+if not PlaceEggOnce(
+    Tool,
+    Plot
+) then
+
+    return false
+
+end
+
+
+WaitToolGone(
+    Tool,
+    WAIT_TOOL_GONE
+)
+
+
+print(
+    "[FUSE] EGG PLACED"
+)
+
+
+return true
+
+
+end
+
+--==================================================
+-- EXIT TREADMILL
+--==================================================
+
+local function ExitTreadmill()
+
+
+if not TreadmillRunning then
+    return true
+end
+
+
+local Success,
+    Result =
+    pcall(function()
+
+        return TreadmillDoffRemote:
+            InvokeServer()
+
+    end)
+
+
+print(
+    "[TREADMILL] DOFF:",
+    Success,
+    Result
+)
+
+
+TreadmillRunning =
+    false
+
+
+task.wait(
+    0.2
+)
+
+
+return Success
+
+
+end
+
+--==================================================
+-- AUTO EGG LITE
+----------------
+
+-- SATU CYCLE
+
+-- PENTING:
+-- FUNGSI INI HANYA DIPANGGIL SETELAH
+-- MAIN SUDAH MEMASTIKAN ADA HIGHLIGHT.
+--==================================================
+
+local function ProcessAutoEggLite()
+
+
+print(
+    "=========================================="
+)
+
+print(
+    "[AUTO EGG LITE] START"
+)
+
+print(
+    "=========================================="
+)
+
+
+--==================================================
+-- RECHECK HIGHLIGHT
+--
+-- Safety:
+-- jika highlight sudah hilang,
+-- JANGAN jalankan nearest/carry.
+--==================================================
+
+local InitialHighlight =
+    GetHighlightedEgg()
+
+
+if not InitialHighlight then
+
+    warn(
+        "[AUTO EGG LITE] NO HIGHLIGHT"
+    )
+
+    warn(
+        "[AUTO EGG LITE] ABORT"
+    )
+
+    return false
+
+end
+
+
+print(
+    "[AUTO EGG LITE] INITIAL HIGHLIGHT:",
+    InitialHighlight.Name
+)
+
+
+--==================================================
+-- FORCE DOFF
+--==================================================
+
+ForceDoffTreadmill()
+
+
+--==================================================
+-- STEP 1
+-- NEAREST
+--==================================================
+
+local NearestEgg =
+    GetNearestEgg()
+
+
+if not NearestEgg then
+
+    warn(
+        "[AUTO EGG LITE] NEAREST EGG TIDAK ADA"
+    )
+
+    return false
+
+end
+
+
+--==================================================
+-- STEP 2
+-- TWEEN NEAREST
+--==================================================
+
+if not TweenToEgg(
+    NearestEgg
+) then
+
+    warn(
+        "[AUTO EGG LITE] GAGAL TWEEN NEAREST"
+    )
+
+    return false
+
+end
+
+
+task.wait(
+    AFTER_CARRY_DELAY
+)
+
+
+--==================================================
+-- STEP 3
+-- CARRY NEAREST
+--==================================================
+
+if not NearestEgg.Parent then
+
+    warn(
+        "[AUTO EGG LITE] NEAREST SUDAH HILANG"
+    )
+
+    return false
+
+end
+
+
+if not CarryNearestEgg(
+    NearestEgg
+) then
+
+    warn(
+        "[AUTO EGG LITE] CARRY NEAREST FAILED"
+    )
+
+    return false
+
+end
+
+
+print(
+    "[AUTO EGG LITE] NEAREST CARRY SUCCESS"
+)
+
+
+task.wait(
+    0.1
+)
+
+
+--==================================================
+-- STEP 4
+-- GUARD
+--==================================================
+
+if not TweenToGuard() then
+
+    warn(
+        "[AUTO EGG LITE] GAGAL KE GUARD"
+    )
+
+    return false
+
+end
+
+
+print(
+    "[AUTO EGG LITE] ARRIVED GUARD"
+)
+
+
+--==================================================
+-- STEP 5
+-- WAIT GUARD
+--==================================================
+
+task.wait(
+    GUARD_WAIT
+)
+
+
+--==================================================
+-- STEP 6
+-- FIND HIGHLIGHT
+--==================================================
+
+local HighlightEgg =
+    GetHighlightedEgg()
+
+
+if not HighlightEgg then
+
+    warn(
+        "=========================================="
+    )
+
+    warn(
+        "[AUTO EGG LITE] HIGHLIGHT HILANG"
+    )
+
+    warn(
+        "[AUTO EGG LITE] TIDAK LANJUT"
+    )
+
+    warn(
+        "=========================================="
+    )
+
+    return false
+
+end
+
+
+print(
+    "[AUTO EGG LITE] HIGHLIGHT TARGET:",
+    HighlightEgg.Name
+)
+
+
+--==================================================
+-- STEP 7
+-- TELEPORT HIGHLIGHT
+--==================================================
+
+if not TeleportToHighlightedEgg(
+    HighlightEgg
+) then
+
+    warn(
+        "[AUTO EGG LITE] TELEPORT HIGHLIGHT FAILED"
+    )
+
+    UnanchorRoot()
+
+    return false
+
+end
+
+
+--==================================================
+-- STEP 8
+-- WAIT ANCHORED
+--==================================================
+
+print(
+    "[AUTO EGG LITE] WAIT ANCHORED:",
+    HIGHLIGHT_ANCHOR_WAIT
+)
+
+
+task.wait(
+    HIGHLIGHT_ANCHOR_WAIT
+)
+
+
+--==================================================
+-- STEP 9
+-- UNANCHOR
+--==================================================
+
+UnanchorRoot()
+
+
+--==================================================
+-- STEP 10
+-- WAIT GETTINGUP
+--==================================================
+
+if not WaitForGettingUp() then
+
+    warn(
+        "[AUTO EGG LITE] GETTINGUP FAILED"
+    )
+
+    return false
+
+end
+
+
+--==================================================
+-- DELAY BEFORE CARRY
+--==================================================
+
+task.wait(
+    0.8
+)
+
+
+--==================================================
+-- STEP 11
+-- RECHECK HIGHLIGHT EGG
+--==================================================
+
+if not HighlightEgg.Parent then
+
+    warn(
+        "[AUTO EGG LITE] HIGHLIGHT EGG HILANG"
+    )
+
+    return false
+
+end
+
+
+--==================================================
+-- STEP 12
+-- CARRY HIGHLIGHT
+-- UID ONLY
+--==================================================
+
+if not CarryHighlightedEgg(
+    HighlightEgg
+) then
+
+    warn(
+        "[AUTO EGG LITE] CARRY HIGHLIGHT FAILED"
+    )
+
+    return false
+
+end
+
+
+print(
+    "[AUTO EGG LITE] REMOTE CARRY SUCCESS"
+)
+
+
+--==================================================
+-- STEP 13
+-- VERIFY
+--==================================================
+
+if not VerifyCarry(
+    HighlightEgg
+) then
+
+    warn(
+        "[AUTO EGG LITE] VERIFY FAILED"
+    )
+
+    return false
+
+end
+
+
+print(
+    "=========================================="
+)
+
+print(
+    "[AUTO EGG LITE] HIGHLIGHT CARRY VERIFIED"
+)
+
+print(
+    "=========================================="
+)
+
+
+--==================================================
+-- STEP 14
+-- STARTAREA
+--==================================================
+
+task.wait(
+    0.1
+)
+
+
+if not TweenToStartArea() then
+
+    warn(
+        "[AUTO EGG LITE] GAGAL KE STARTAREA"
+    )
+
+    return false
+
+end
+
+
+print(
+    "[AUTO EGG LITE] ARRIVED STARTAREA"
+)
+
+
+print(
+    "=========================================="
+)
+
+print(
+    "[AUTO EGG LITE] SUCCESS"
+)
+
+print(
+    "=========================================="
+)
+
+
+return true
+
+
+end
+
+--==================================================
+-- FIND 3 SAME PET
+--==================================================
+
+local function FindThreeSamePets()
+
+
+local Backpack =
+    GetBackpack()
+
+
+if not Backpack then
+    return nil
+end
+
+
+local Groups =
+    {}
+
+
+for _, Tool in ipairs(
+    Backpack:GetChildren()
+) do
+
+    if Tool:IsA("Tool")
+        and not BLACKLIST[Tool.Name] then
+
+
+        local Weight =
+            Tool:GetAttribute(
+                "Weight"
+            )
+
+
+        local UID =
+            Tool:GetAttribute(
+                "UID"
+            )
+
+
+        if typeof(Weight) == "number"
+            and Weight < MAX_PET_WEIGHT
+            and typeof(UID) == "string"
+            and UID ~= "" then
+
+
+            Groups[Tool.Name] =
+                Groups[Tool.Name]
+                or {}
+
+
+            table.insert(
+                Groups[Tool.Name],
+                Tool
+            )
+
+        end
 
     end
 
+end
 
 
+for Name, Tools in pairs(
+    Groups
+) do
+
+    if #Tools >= 3 then
+
+        print(
+            "[FUSE] FOUND:",
+            Name
+        )
+
+
+        return
+            Tools[1],
+            Tools[2],
+            Tools[3]
+
+    end
+
+end
+
+
+return nil
+
+
+end
+
+--==================================================
+-- LOAD PET
+--==================================================
+
+local function LoadOnePet(
+Tool,
+Index
+)
+
+
+if not Tool
+    or not Tool.Parent then
+
+    return false
+
+end
+
+
+local UID =
+    Tool:GetAttribute(
+        "UID"
+    )
+
+
+if typeof(UID) ~= "string"
+    or UID == "" then
+
+    return false
+
+end
+
+
+print(
+    "[FUSE] LOAD #" .. Index,
+    Tool.Name,
+    UID
+)
+
+
+local Success,
+    Result =
+    pcall(function()
+
+        return LoadPet:
+            InvokeServer(
+                UID
+            )
+
+    end)
+
+
+print(
+    "[FUSE] LOAD RESULT:",
+    Success,
+    Result
+)
+
+
+if not Success then
+    return false
+end
+
+
+task.wait(
+    FUSE_LOAD_DELAY
+)
+
+
+return true
+
+
+end
+
+--==================================================
+-- BEGIN FUSE
+--==================================================
+
+local function StartFuse()
+
+
+local Success,
+    Result =
+    pcall(function()
+
+        return BeginFuse:
+            InvokeServer()
+
+    end)
+
+
+print(
+    "[FUSE] BEGIN:",
+    Success,
+    Result
+)
+
+
+return Success
+
+
+end
+
+--==================================================
+-- FINISH FUSE
+--==================================================
+
+local function FinishFuse()
+
+
+task.wait(
+    FUSE_AFTER_BEGIN_DELAY
+)
+
+
+local Success,
+    Result =
+    pcall(function()
+
+        return FinishReveal:
+            InvokeServer()
+
+    end)
+
+
+print(
+    "[FUSE] FINISH:",
+    Success,
+    Result
+)
+
+
+if not Success then
+    return false
+end
+
+
+task.wait(
+    FUSE_AFTER_REVEAL_DELAY
+)
+
+
+return true
+
+
+end
+
+--==================================================
+-- WAIT FUSED EGG
+--==================================================
+
+local function WaitForFusedEggEquipped(
+Timeout
+)
+
+
+local StartTime =
+    tick()
+
+
+while tick() - StartTime <
+    Timeout do
+
+
+    local Tool =
+        GetEquippedTool()
+
+
+    if Tool then
+
+        print(
+            "[FUSE] RESULT:",
+            Tool.Name,
+            Tool:GetAttribute(
+                "UID"
+            )
+        )
+
+
+        return Tool
+
+    end
 
 
     task.wait(
-
-        0.2
-
+        0.1
     )
-
-
-
-
-
-    return true
-
-
 
 end
 
 
+return nil
 
 
-
---==================================================
-
--- PROCESS FUSE CYCLE
-
---
-
--- IMPORTANT:
-
--- TIDAK ADA HATCH DI SINI
+end
 
 --==================================================
-
-
+-- FUSE CYCLE
+--==================================================
 
 local function TryFuseCycle()
 
 
+local Pet1,
+    Pet2,
+    Pet3 =
+    FindThreeSamePets()
 
-    print(
 
-        "=========================================="
+if not Pet1 then
 
-    )
-
-
-
-    print(
-
-        "[MAIN] CHECK FUSE"
-
-    )
-
-
-
-
-
-    local Pet1,
-
-        Pet2,
-
-        Pet3 =
-
-        FindThreeSamePets()
-
-
-
-
-
-    if not Pet1 then
-
-
-
-        print(
-
-            "[MAIN] NO 3 PET READY"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    --==============================================
-
-    -- EXIT TREADMILL
-
-    --==============================================
-
-
-
-    if TreadmillRunning then
-
-
-
-        if not ExitTreadmill() then
-
-            return false
-
-        end
-
-
-
-    end
-
-
-
-
-
-    --==============================================
-
-    -- LOAD PET 1
-
-    --==============================================
-
-
-
-    if not LoadOnePet(
-
-        Pet1,
-
-        1
-
-    ) then
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    --==============================================
-
-    -- LOAD PET 2
-
-    --==============================================
-
-
-
-    if not LoadOnePet(
-
-        Pet2,
-
-        2
-
-    ) then
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    --==============================================
-
-    -- LOAD PET 3
-
-    --==============================================
-
-
-
-    if not LoadOnePet(
-
-        Pet3,
-
-        3
-
-    ) then
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    --==============================================
-
-    -- BEGIN
-
-    --==============================================
-
-
-
-    if not StartFuse() then
-
-        return false
-
-    end
-
-
-
-
-
-    --==============================================
-
-    -- FINISH
-
-    --==============================================
-
-
-
-    if not FinishFuse() then
-
-        return false
-
-    end
-
-
-
-
-
-    --==============================================
-
-    -- WAIT RESULT
-
-    --==============================================
-
-
-
-    local FusedEgg =
-
-        WaitForFusedEggEquipped(
-
-            FUSED_EGG_WAIT_TIMEOUT
-
-        )
-
-
-
-
-
-    if not FusedEgg then
-
-        return false
-
-    end
-
-
-
-
-
-    --==============================================
-
-    -- PLACE
-
-    --==============================================
-
-
-
-    if not PlaceFusedEgg(
-
-        FusedEgg
-
-    ) then
-
-
-
-        warn(
-
-            "[FUSE] PLACE FUSED EGG FAILED"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    --==============================================
-
-    -- NO HATCH
-
-    --==============================================
-
-
-
-    print(
-
-        "[FUSE] HATCH SKIPPED"
-
-    )
-
-
-
-    print(
-
-        "[FUSE] CYCLE COMPLETE"
-
-    )
-
-
-
-
-
-    return true
-
-
+    return false
 
 end
 
 
+if TreadmillRunning then
 
-
-
---==================================================
-
--- PROCESS FIELD EGG
---
--- NEW FLOW:
--- NEAREST X TERKECIL
--- -> TWEEN NEAREST
--- -> CARRY NEAREST (UID + SLOT)
--- -> GUARD
--- -> WAIT GUARD
--- -> FIND HIGHLIGHT
--- -> TELEPORT HIGHLIGHT
--- -> ANCHOR
--- -> WAIT 0.5
--- -> UNANCHOR
--- -> WAIT GETTINGUP
--- -> CARRY HIGHLIGHT (UID ONLY)
--- -> VERIFY HILANG DARI AreaEggSlotsClient
--- -> STARTAREA
--- -> WAIT TOOL
--- -> PLOT
--- -> PLACE
--- -> NO HATCH
-
---==================================================
-
-local function ProcessFieldEgg(Egg)
-    if not Egg or not Egg.Parent then
+    if not ExitTreadmill() then
         return false
     end
 
-    print("==========================================")
-    print("[FIELD EGG] NEW FLOW:", Egg.Name)
-    print("==========================================")
+end
 
-    --==============================================
-    -- FORCE DOFF
-    --==============================================
 
-    if not ForceDoffBeforeStart() then
-        warn("[FIELD EGG] FORCE DOFF FAILED")
-        return false
-    end
+if not LoadOnePet(
+    Pet1,
+    1
+) then
 
-    --==============================================
-    -- TWEEN NEAREST
-    --==============================================
+    return false
 
-    if not TweenToFieldEgg(Egg) then
-        warn("[FIELD EGG] GAGAL TWEEN KE NEAREST")
-        return false
-    end
+end
 
-    task.wait(AFTER_CARRY_DELAY)
 
-    --==============================================
-    -- CARRY NEAREST
-    --==============================================
+if not LoadOnePet(
+    Pet2,
+    2
+) then
 
-    if not Egg.Parent or not CarryEgg(Egg, true) then
-        warn("[FIELD EGG] NEAREST CARRY FAILED")
-        return false
-    end
+    return false
 
-    print("[FIELD EGG] NEAREST CARRY SUCCESS")
+end
 
-    --==============================================
-    -- GUARD
-    --==============================================
 
-    task.wait(0.1)
+if not LoadOnePet(
+    Pet3,
+    3
+) then
 
-    if not TweenToGuardNew() then
-        warn("[FIELD EGG] GAGAL KE GUARD")
-        return false
-    end
+    return false
 
-    print("[FIELD EGG] ARRIVED AT GUARD")
+end
 
-    --==============================================
-    -- WAIT GUARD
-    --==============================================
 
-    task.wait(GUARD_WAIT)
+if not StartFuse() then
+    return false
+end
 
-    --==============================================
-    -- FIND HIGHLIGHT EGG
-    --==============================================
 
-    local HighlightEgg = GetHighlightedEgg()
-    if not HighlightEgg or not HighlightEgg.Parent then
-        warn("[FIELD EGG] TIDAK ADA HIGHLIGHT EGG")
-        return false
-    end
+if not FinishFuse() then
+    return false
+end
 
-    print("[FIELD EGG] HIGHLIGHT TARGET:", HighlightEgg.Name)
 
-    --==============================================
-    -- TELEPORT + ANCHOR
-    --==============================================
+local FusedEgg =
+    WaitForFusedEggEquipped(
+        FUSED_EGG_WAIT_TIMEOUT
+    )
 
-    if not TeleportToHighlightedEgg(HighlightEgg) then
-        warn("[FIELD EGG] TELEPORT HIGHLIGHT FAILED")
-        UnanchorRootNew()
-        return false
-    end
 
-    task.wait(HIGHLIGHT_ANCHOR_WAIT)
+if not FusedEgg then
+    return false
+end
 
-    --==============================================
-    -- UNANCHOR
-    --==============================================
 
-    UnanchorRootNew()
+return PlaceFusedEgg(
+    FusedEgg
+)
 
-    --==============================================
-    -- WAIT GETTINGUP
-    --==============================================
 
-    if not WaitForGettingUpNew() then
-        warn("[FIELD EGG] GETTINGUP TIDAK TERDETEKSI")
-        return false
-    end
-
-    task.wait(0.8)
-
-    --==============================================
-    -- CARRY HIGHLIGHT - UID ONLY
-    --==============================================
-
-    if not HighlightEgg.Parent then
-        warn("[FIELD EGG] HIGHLIGHT EGG SUDAH TIDAK VALID")
-        return false
-    end
-
-    if not CarryEgg(HighlightEgg, false) then
-        warn("[FIELD EGG] HIGHLIGHT CARRY REMOTE FAILED")
-        return false
-    end
-
-    --==============================================
-    -- VERIFY
-    --==============================================
-
-    if not VerifyFieldEggCarry(HighlightEgg) then
-        warn("[FIELD EGG] HIGHLIGHT CARRY VERIFICATION FAILED")
-        warn("[FIELD EGG] TIDAK LANJUT KE STARTAREA")
-        return false
-    end
-
-    print("[FIELD EGG] HIGHLIGHT CARRY VERIFIED SUCCESS")
-
-    --==============================================
-    -- STARTAREA
-    --==============================================
-
-    task.wait(0.1)
-
-    if not TweenToStartAreaNew() then
-        warn("[FIELD EGG] GAGAL KE STARTAREA")
-        return false
-    end
-
-    print("[FIELD EGG] ARRIVED AT STARTAREA")
-
-    --==============================================
-    -- WAIT AFTER RETURN
-    --==============================================
-
-    task.wait(WAIT_AFTER_RETURN)
-
-    --==============================================
-    -- WAIT TOOL
-    --==============================================
-
-    local Tool = WaitForEquippedTool(5)
-    if not Tool then
-        warn("[FIELD EGG] CARRIED EGG TOOL TIDAK EQUIPPED")
-        return false
-    end
-
-    print("[FIELD EGG] CARRIED TOOL:", Tool.Name)
-
-    --==============================================
-    -- PARASITE
-    --==============================================
-
-    if CheckAndFeedParasite() then
-        print("[FIELD EGG] PARASITE -> PLACE SKIP")
-        return true
-    end
-
-    --==============================================
-    -- OWN PLOT
-    --==============================================
-
-    local Plot = GetMyPlot()
-    if not Plot then
-        return false
-    end
-
-    if not FlyToObject(Plot, REACH_DISTANCE, "FIELD:OWN_PLOT") then
-        return false
-    end
-
-    --==============================================
-    -- CHECK TOOL
-    --==============================================
-
-    local CurrentTool = GetEquippedTool()
-    if not CurrentTool then
-        warn("[FIELD EGG] TOOL HILANG")
-        return false
-    end
-
-    if CheckAndFeedParasite() then
-        print("[FIELD EGG] PARASITE -> PLACE CANCEL")
-        return true
-    end
-
-    --==============================================
-    -- PLACE
-    --==============================================
-
-    if not PlaceEggOnce(CurrentTool, Plot) then
-        warn("[FIELD EGG] PLACE FAILED")
-        return false
-    end
-
-    --==============================================
-    -- WAIT TOOL GONE
-    --==============================================
-
-    WaitToolGone(CurrentTool, WAIT_TOOL_GONE)
-
-    --==============================================
-    -- NO HATCH
-    --==============================================
-
-    print("[FIELD EGG] HATCH SKIPPED")
-    print("[FIELD EGG] COMPLETE")
-
-    return true
 end
 
 --==================================================
-
--- INVENTORY EGG
-
--- GET INVENTORY
-
+-- INVENTORY
 --==================================================
-
-
 
 local function GetEggInventory()
 
 
+local Success,
+    Data =
+    pcall(function()
 
-    local Success,
+        return Save.Get()
 
-        Data =
+    end)
 
-        pcall(function()
 
+if not Success
+    or typeof(Data) ~= "table" then
 
-
-            return Save.Get()
-
-
-
-        end)
-
-
-
-
-
-    if not Success then
-
-
-
-        warn(
-
-            "[INV EGG] Save.Get ERROR:",
-
-            Data
-
-        )
-
-
-
-        return nil
-
-
-
-    end
-
-
-
-
-
-    if typeof(Data) ~= "table" then
-
-
-
-        warn(
-
-            "[INV EGG] SAVE DATA INVALID"
-
-        )
-
-
-
-        return nil
-
-
-
-    end
-
-
-
-
-
-    local EggInventory =
-
-        Data.EggInventory
-
-
-
-
-
-    if typeof(EggInventory)
-
-        ~= "table" then
-
-
-
-        warn(
-
-            "[INV EGG] EggInventory INVALID"
-
-        )
-
-
-
-        return nil
-
-
-
-    end
-
-
-
-
-
-    return EggInventory
-
-
+    return nil
 
 end
 
 
+if typeof(
+    Data.EggInventory
+) ~= "table" then
+
+    return nil
+
+end
 
 
+return Data.EggInventory
+
+
+end
 
 --==================================================
-
--- INVENTORY EGG SCALE
-
+-- INVENTORY SCALE
 --==================================================
-
-
 
 local function GetInventoryEggScale(
-
-    EggData
-
+Data
 )
 
 
-
-    if typeof(EggData) ~= "table" then
-
-        return -math.huge
-
-    end
+if typeof(Data) ~= "table" then
+    return 0
+end
 
 
+local Scale =
+    Data.AssetScale
 
 
+if typeof(Scale) ~= "number" then
 
-    local Scale =
-
-        EggData.AssetScale
-
-
-
-
-
-    if typeof(Scale) ~= "number" then
-
-
-
-        Scale =
-
-            EggData.Scale
-
-
-
-    end
-
-
-
-
-
-    if typeof(Scale) ~= "number" then
-
-
-
-        Scale = 0
-
-
-
-    end
-
-
-
-
-
-    return Scale
-
-
+    Scale =
+        Data.Scale
 
 end
 
 
+if typeof(Scale) ~= "number" then
+    Scale = 0
+end
 
 
+return Scale
+
+end
 
 --==================================================
-
--- INVENTORY EGG SNAPSHOT
-
+-- INVENTORY SNAPSHOT
 --==================================================
-
-
 
 local function GetInventoryEggSnapshot()
 
 
-
-    local EggInventory =
-
-        GetEggInventory()
+local Inventory =
+    GetEggInventory()
 
 
+if not Inventory then
+    return {}
+end
 
 
+local Snapshot =
+    {}
 
-    if not EggInventory then
 
-        return {}
+for UID, Data in pairs(
+    Inventory
+) do
+
+    if typeof(UID) == "string"
+        and typeof(Data) == "table"
+        and Data.Placement == nil then
+
+
+        table.insert(
+            Snapshot,
+            {
+                UID = UID,
+                Data = Data,
+                Scale =
+                    GetInventoryEggScale(
+                        Data
+                    )
+            }
+        )
 
     end
 
+end
 
 
+table.sort(
+    Snapshot,
+    function(A, B)
 
+        if A.Scale ==
+            B.Scale then
 
-    local Eggs = {}
-
-
-
-
-
-    for UID,
-
-        EggData in pairs(
-
-            EggInventory
-
-        ) do
-
-
-
-
-
-        if typeof(UID) == "string"
-
-            and typeof(EggData) == "table"
-
-            and EggData.Placement == nil then
-
-
-
-
-
-            local Scale =
-
-                GetInventoryEggScale(
-
-                    EggData
-
-                )
-
-
-
-
-
-            table.insert(
-
-                Eggs,
-
-                {
-
-                    UID = UID,
-
-                    Data = EggData,
-
-                    Scale = Scale
-
-                }
-
-            )
-
-
+            return A.UID <
+                B.UID
 
         end
 
 
+        return A.Scale >
+            B.Scale
 
     end
+)
 
 
+print(
+    "[INV] SNAPSHOT:",
+    #Snapshot
+)
 
 
-
-    --==============================================
-
-    -- SORT TERBESAR
-
-    --==============================================
+return Snapshot
 
 
+end
 
-    table.sort(
+--==================================================
+-- EQUIP INVENTORY EGG
+--==================================================
 
-        Eggs,
-
-        function(A, B)
-
-
-
-            if A.Scale ==
-
-                B.Scale then
+local function EquipInventoryEgg(
+UID
+)
 
 
+local Success,
+    Result =
+    pcall(function()
 
-                return A.UID < B.UID
+        return EquipEggRemote:
+            InvokeServer(
+                UID
+            )
+
+    end)
 
 
+print(
+    "[INV] EQUIP:",
+    UID,
+    Success,
+    Result
+)
+
+
+if not Success then
+    return false
+end
+
+
+task.wait(
+    INVENTORY_EGG_TOOL_DELAY
+)
+
+
+local Tool =
+    WaitForEquippedTool(
+        INVENTORY_EGG_EQUIP_TIMEOUT
+    )
+
+
+if not Tool then
+    return false
+end
+
+
+local ToolUID =
+    Tool:GetAttribute(
+        "UID"
+    )
+
+
+if ToolUID
+    and tostring(ToolUID)
+        ~= tostring(UID) then
+
+    return false
+
+end
+
+
+return true
+
+
+end
+
+--==================================================
+-- PROCESS INVENTORY EGG
+--==================================================
+
+local function ProcessInventoryEgg(
+EggData,
+Index,
+Total
+)
+
+
+local UID =
+    EggData.UID
+
+
+print(
+    "[INV] PROCESS:",
+    Index,
+    "/",
+    Total,
+    "| UID:",
+    UID,
+    "| SCALE:",
+    EggData.Scale
+)
+
+
+if not EquipInventoryEgg(
+    UID
+) then
+
+    return false
+
+end
+
+
+local Plot =
+    GetMyPlot()
+
+
+if not Plot then
+    return false
+end
+
+
+if TreadmillRunning then
+
+    ExitTreadmill()
+
+end
+
+
+if not TweenToPosition(
+    GetObjectPosition(
+        Plot
+    )
+) then
+
+    return false
+
+end
+
+
+task.wait(
+    0.2
+)
+
+
+local Tool =
+    GetEquippedTool()
+
+
+if not Tool then
+    return false
+end
+
+
+local ToolUID =
+    Tool:GetAttribute(
+        "UID"
+    )
+
+
+if ToolUID
+    and tostring(ToolUID)
+        ~= tostring(UID) then
+
+    return false
+
+end
+
+
+if not PlaceEggOnce(
+    Tool,
+    Plot
+) then
+
+    return false
+
+end
+
+
+WaitToolGone(
+    Tool,
+    WAIT_TOOL_GONE
+)
+
+
+task.wait(
+    INVENTORY_EGG_AFTER_PLACE_DELAY
+)
+
+
+return true
+
+
+end
+
+--==================================================
+-- PLACED EGGS
+--==================================================
+
+local function IsMyPlacedEgg(
+Egg
+)
+
+
+local Prefix =
+    tostring(
+        LocalPlayer.UserId
+    )
+    .. "_"
+
+
+return string.sub(
+    Egg.Name,
+    1,
+    #Prefix
+) == Prefix
+
+
+end
+
+local function GetMyPlacedEggs()
+
+
+local Eggs =
+    {}
+
+local Seen =
+    {}
+
+
+for _, Object in ipairs(
+    Workspace:GetDescendants()
+) do
+
+    if Object.Name ==
+        "PlacedEggRenders" then
+
+
+        for _, Egg in ipairs(
+            Object:GetChildren()
+        ) do
+
+            if IsMyPlacedEgg(Egg)
+                and not Seen[Egg] then
+
+                Seen[Egg] =
+                    true
+
+
+                table.insert(
+                    Eggs,
+                    Egg
+                )
 
             end
 
-
-
-
-
-            return A.Scale > B.Scale
-
-
-
         end
 
+    end
+
+end
+
+
+return Eggs
+
+end
+
+--==================================================
+-- HATCH ONE
+--==================================================
+
+local function HatchOneEgg(
+Egg
+)
+
+
+local Position =
+    GetObjectPosition(
+        Egg
     )
 
 
+if not Position then
+    return false
+end
 
 
+if not TweenToPosition(
+    Position
+) then
 
-    print(
+    return false
 
-        "=========================================="
-
-    )
-
-
-
-    print(
-
-        "[INV EGG] SNAPSHOT"
-
-    )
+end
 
 
-
-    print(
-
-        "[INV EGG] TOTAL:",
-
-        #Eggs
-
-    )
+local StartTime =
+    tick()
 
 
+while tick() - StartTime <
+    HATCH_MAX_TIME do
 
 
+    if not Egg.Parent then
+        return true
+    end
 
-    for Index,
 
-        Egg in ipairs(
+    local Root =
+        GetRoot()
 
-            Eggs
 
+    if Root then
+
+        for _, Prompt in ipairs(
+            Workspace:GetDescendants()
         ) do
 
 
-
-
-
-        print(
-
-            "[INV EGG] #" .. Index,
-
-            "| UID:",
-
-            Egg.UID,
-
-            "| SCALE:",
-
-            Egg.Scale,
-
-            "| CATEGORY:",
-
-            Egg.Data.AssetCategory
-
-                or Egg.Data.Category
-
-                or "nil"
-
-        )
-
-
-
-    end
-
-
-
-
-
-    print(
-
-        "=========================================="
-
-    )
-
-
-
-
-
-    return Eggs
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- EQUIP INVENTORY EGG
-
---==================================================
-
-
-
-local function EquipInventoryEgg(
-
-    UID
-
-)
-
-
-
-    if typeof(UID) ~= "string"
-
-        or UID == "" then
-
-
-
-        warn(
-
-            "[INV EGG] INVALID UID"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    print(
-
-        "=========================================="
-
-    )
-
-
-
-    print(
-
-        "[INV EGG] EQUIP UID:",
-
-        UID
-
-    )
-
-
-
-
-
-    local Success,
-
-        Result =
-
-        pcall(function()
-
-
-
-            return EquipEggRemote:
-
-                InvokeServer(
-
-                    UID
-
-                )
-
-
-
-        end)
-
-
-
-
-
-    print(
-
-        "[INV EGG] EQUIP RESULT:",
-
-        Success,
-
-        Result
-
-    )
-
-
-
-
-
-    if not Success then
-
-
-
-        warn(
-
-            "[INV EGG] EQUIP ERROR:",
-
-            Result
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    task.wait(
-
-        INVENTORY_EGG_TOOL_DELAY
-
-    )
-
-
-
-
-
-    local Tool =
-
-        WaitForEquippedTool(
-
-            INVENTORY_EGG_EQUIP_TIMEOUT
-
-        )
-
-
-
-
-
-    if not Tool then
-
-
-
-        warn(
-
-            "[INV EGG] TOOL TIDAK EQUIPPED"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    local EquippedUID =
-
-        Tool:GetAttribute(
-
-            "UID"
-
-        )
-
-
-
-
-
-    print(
-
-        "[INV EGG] TOOL:",
-
-        Tool.Name
-
-    )
-
-
-
-    print(
-
-        "[INV EGG] EQUIPPED UID:",
-
-        EquippedUID
-
-    )
-
-
-
-
-
-    if EquippedUID
-
-        and tostring(EquippedUID)
-
-            ~= tostring(UID) then
-
-
-
-        warn(
-
-            "[INV EGG] UID TOOL BERBEDA!"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    return true
-
-
-
-end
-
-
-
-
-
---==================================================
-
--- PROCESS ONE INVENTORY EGG
-
---==================================================
-
-
-
-local function ProcessInventoryEgg(
-
-    EggData,
-
-    Index,
-
-    Total
-
-)
-
-
-
-    if not EggData then
-
-        return false
-
-    end
-
-
-
-
-
-    local UID =
-
-        EggData.UID
-
-
-
-
-
-    print(
-
-        "=========================================="
-
-    )
-
-
-
-    print(
-
-        "[INV EGG] PROCESS:",
-
-        Index,
-
-        "/",
-
-        Total
-
-    )
-
-
-
-    print(
-
-        "[INV EGG] UID:",
-
-        UID
-
-    )
-
-
-
-    print(
-
-        "[INV EGG] SCALE:",
-
-        EggData.Scale
-
-    )
-
-
-
-
-
-    --==============================================
-
-    -- EQUIP
-
-    --==============================================
-
-
-
-    if not EquipInventoryEgg(
-
-        UID
-
-    ) then
-
-
-
-        warn(
-
-            "[INV EGG] GAGAL EQUIP:",
-
-            UID
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    --==============================================
-
-    -- GET TOOL
-
-    --==============================================
-
-
-
-    local Tool =
-
-        GetEquippedTool()
-
-
-
-
-
-    if not Tool then
-
-
-
-        Tool =
-
-            WaitForEquippedTool(
-
-                INVENTORY_EGG_EQUIP_TIMEOUT
-
+            if Prompt:IsA(
+                "ProximityPrompt"
             )
+                and Prompt.Enabled then
 
 
+                local Parent =
+                    Prompt.Parent
 
-    end
 
+                if Parent
+                    and Parent:IsA(
+                        "BasePart"
+                    ) then
 
 
+                    local Distance =
+                        (
+                            Root.Position
+                            - Parent.Position
+                        ).Magnitude
 
 
-    if not Tool then
+                    if Distance <=
+                        MAX_PROMPT_DISTANCE then
 
 
+                        pcall(function()
 
-        warn(
+                            fireproximityprompt(
+                                Prompt
+                            )
 
-            "[INV EGG] TOOL TIDAK DITEMUKAN"
+                        end)
 
-        )
 
+                    end
 
+                end
 
-        return false
-
-
-
-    end
-
-
-
-
-
-    local ToolUID =
-
-        Tool:GetAttribute(
-
-            "UID"
-
-        )
-
-
-
-
-
-    if ToolUID
-
-        and tostring(ToolUID)
-
-            ~= tostring(UID) then
-
-
-
-        warn(
-
-            "[INV EGG] TOOL UID TIDAK SESUAI"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    --==============================================
-
-    -- OWN PLOT
-
-    --==============================================
-
-
-
-    local Plot =
-
-        GetMyPlot()
-
-
-
-
-
-    if not Plot then
-
-
-
-        warn(
-
-            "[INV EGG] OWN PLOT TIDAK DITEMUKAN"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    --==============================================
-
-    -- EXIT TREADMILL
-
-    --==============================================
-
-
-
-    if TreadmillRunning then
-
-
-
-        print(
-
-            "[INV EGG] EXIT TREADMILL"
-
-        )
-
-
-
-
-
-        if not ExitTreadmill() then
-
-            return false
+            end
 
         end
 
-
-
     end
-
-
-
-
-
-    --==============================================
-
-    -- FLY PLOT
-
-    --==============================================
-
-
-
-    if not FlyToObject(
-
-        Plot,
-
-        REACH_DISTANCE,
-
-        "INV_EGG:PLOT"
-
-    ) then
-
-
-
-        warn(
-
-            "[INV EGG] GAGAL FLY PLOT"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
 
 
     task.wait(
-
-        0.2
-
+        PROMPT_CHECK_DELAY
     )
-
-
-
-
-
-    --==============================================
-
-    -- CHECK TOOL
-
-    --==============================================
-
-
-
-    Tool =
-
-        GetEquippedTool()
-
-
-
-
-
-    if not Tool then
-
-
-
-        warn(
-
-            "[INV EGG] TOOL HILANG"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    ToolUID =
-
-        Tool:GetAttribute(
-
-            "UID"
-
-        )
-
-
-
-
-
-    if ToolUID
-
-        and tostring(ToolUID)
-
-            ~= tostring(UID) then
-
-
-
-        warn(
-
-            "[INV EGG] TOOL BERUBAH"
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    --==============================================
-
-    -- PLACE
-
-    --==============================================
-
-
-
-    if not PlaceEggOnce(
-
-        Tool,
-
-        Plot
-
-    ) then
-
-
-
-        warn(
-
-            "[INV EGG] PLACE FAILED:",
-
-            UID
-
-        )
-
-
-
-        return false
-
-
-
-    end
-
-
-
-
-
-    print(
-
-        "[INV EGG] PLACE SUCCESS:",
-
-        UID
-
-    )
-
-
-
-
-
-    --==============================================
-
-    -- WAIT TOOL
-
-    --==============================================
-
-
-
-    task.wait(
-
-        INVENTORY_EGG_AFTER_PLACE_DELAY
-
-    )
-
-
-
-
-
-    WaitToolGone(
-
-        Tool,
-
-        WAIT_TOOL_GONE
-
-    )
-
-
-
-
-
-    print(
-
-        "[INV EGG] COMPLETE:",
-
-        Index,
-
-        "/",
-
-        Total
-
-    )
-
-
-
-
-
-    return true
-
-
 
 end
 
 
+return false
 
 
-
---==================================================
-
--- PROCESS INVENTORY EGGS
-
---
-
--- FLOW:
-
---
-
--- SNAPSHOT INVENTORY
-
--- ->
-
--- HATCH EXISTING PLACED EGGS
-
--- ->
-
--- PROCESS SNAPSHOT
-
--- ->
-
--- EQUIP
-
--- ->
-
--- PLACE
-
---
-
--- HATCH TIDAK DIULANG SETELAH SETIAP PLACE
+end
 
 --==================================================
+-- HATCH ALL
+--==================================================
+
+local function HatchAllPlacedEggs()
 
 
+if HatchRunning then
+    return
+end
+
+
+HatchRunning =
+    true
+
+
+local Success,
+    Error =
+    xpcall(
+        function()
+
+            local Eggs =
+                GetMyPlacedEggs()
+
+
+            print(
+                "[HATCH] SNAPSHOT:",
+                #Eggs
+            )
+
+
+            for Index, Egg in ipairs(
+                Eggs
+            ) do
+
+
+                if Egg.Parent then
+
+                    HatchOneEgg(
+                        Egg
+                    )
+
+                end
+
+
+                task.wait(
+                    HATCH_RESUME_TIME
+                )
+
+            end
+
+        end,
+        debug.traceback
+    )
+
+
+if not Success then
+
+    warn(
+        "[HATCH] ERROR:",
+        Error
+    )
+
+end
+
+
+HatchRunning =
+    false
+
+
+end
+
+--==================================================
+-- TREADMILL
+--==================================================
+
+local function GetMyTreadmill()
+
+
+local Plot =
+    GetMyPlot()
+
+
+if not Plot then
+    return nil
+end
+
+
+return Plot:FindFirstChild(
+    TREADMILL_NAME,
+    true
+)
+
+
+end
+
+local function EnterTreadmill()
+
+
+if TreadmillRunning then
+    return true
+end
+
+
+local Treadmill =
+    GetMyTreadmill()
+
+
+if not Treadmill then
+    return false
+end
+
+
+if not TweenToPosition(
+    GetObjectPosition(
+        Treadmill
+    )
+) then
+
+    return false
+
+end
+
+
+task.wait(
+    0.2
+)
+
+
+local Success,
+    Result =
+    pcall(function()
+
+        return TreadmillWearRemote:
+            InvokeServer()
+
+    end)
+
+
+print(
+    "[TREADMILL] WEAR:",
+    Success,
+    Result
+)
+
+
+if Success then
+
+    TreadmillRunning =
+        true
+
+    return true
+
+end
+
+
+return false
+
+
+end
+
+--==================================================
+-- PROCESS INVENTORY
+--==================================================
 
 local function ProcessInventoryEggs()
 
 
-
-    print(
-
-        "=========================================="
-
-    )
+local Snapshot =
+    GetInventoryEggSnapshot()
 
 
-
-    print(
-
-        "[INV EGG] START INVENTORY PROCESS"
-
-    )
+if #Snapshot == 0 then
+    return false
+end
 
 
+print(
+    "=========================================="
+)
+
+print(
+    "[INV] HATCH EXISTING FIRST"
+)
+
+print(
+    "=========================================="
+)
 
 
-
-    --==============================================
-
-    -- SNAPSHOT INVENTORY 1X
-
-    --==============================================
+HatchAllPlacedEggs()
 
 
-
-    local Snapshot =
-
-        GetInventoryEggSnapshot()
-
+task.wait(
+    HATCH_RESUME_TIME
+)
 
 
+print(
+    "[INV] PROCESS SNAPSHOT:",
+    #Snapshot
+)
 
 
-    local Total =
-
-        #Snapshot
-
-
+for Index, EggData in ipairs(
+    Snapshot
+) do
 
 
+    local Success,
+        Error =
+        xpcall(
+            function()
 
-    if Total == 0 then
+                ProcessInventoryEgg(
+                    EggData,
+                    Index,
+                    #Snapshot
+                )
 
-
-
-        print(
-
-            "[INV EGG] NO INVENTORY EGG"
-
+            end,
+            debug.traceback
         )
 
 
+    if not Success then
 
-        return false
+        warn(
+            "[INV] ERROR:",
+            Error
+        )
 
 
+        StopFly()
+
+        MovementOwner =
+            nil
 
     end
 
 
+    if Index <
+        #Snapshot then
+
+        task.wait(
+            LOOP_DELAY
+        )
+
+    end
+
+end
 
 
+print(
+    "[INV] SNAPSHOT COMPLETE"
+)
+
+
+return true
+
+
+end
+
+--==================================================
+-- MAIN
+--==================================================
+
+task.spawn(function()
+
+
+print(
+    "=========================================="
+)
+
+print(
+    " FUSEV9.3 + AUTO EGG LITE"
+)
+
+print(
+    "=========================================="
+)
+
+print(
+    "[MAIN] MOVEMENT = TWEEN"
+)
+
+print(
+    "[MAIN] START DELAY =",
+    START_DELAY
+)
+
+print(
+    "[MAIN] AUTO EGG LITE = CONDITIONAL"
+)
+
+print(
+    "[MAIN] AUTO EGG LITE ONLY IF HIGHLIGHT EXISTS"
+)
+
+print(
+    "=========================================="
+)
+
+
+task.wait(
+    START_DELAY
+)
+
+
+--==================================================
+-- FIRST EXECUTE HATCH
+--==================================================
+
+if not FirstExecuteHatchDone then
 
     print(
-
-        "[INV EGG] TOTAL SNAPSHOT:",
-
-        Total
-
+        "[MAIN] FIRST EXECUTE HATCH"
     )
-
-
-
-
-
-    --==============================================
-
-    -- HATCH EXISTING PLACED EGG
-
-    --
-
-    -- INI SATU-SATUNYA HATCH DI MAIN FLOW
-
-    --==============================================
-
-
-
-    print(
-
-        "=========================================="
-
-    )
-
-
-
-    print(
-
-        "[MAIN] INVENTORY EGG FOUND"
-
-    )
-
-
-
-    print(
-
-        "[MAIN] -> HATCH EXISTING PLACED EGGS"
-
-    )
-
-
-
-    print(
-
-        "=========================================="
-
-    )
-
-
-
 
 
     HatchAllPlacedEggs()
 
 
-
+    FirstExecuteHatchDone =
+        true
 
 
     task.wait(
-
         HATCH_RESUME_TIME
-
     )
-
-
-
-
-
-    --==============================================
-
-    -- PROCESS SNAPSHOT
-
-    --==============================================
-
-
-
-    print(
-
-        "=========================================="
-
-    )
-
-
-
-    print(
-
-        "[INV EGG] START PLACE SNAPSHOT"
-
-    )
-
-
-
-    print(
-
-        "[INV EGG] TOTAL:",
-
-        Total
-
-    )
-
-
-
-    print(
-
-        "=========================================="
-
-    )
-
-
-
-
-
-    for Index,
-
-        EggData in ipairs(
-
-            Snapshot
-
-        ) do
-
-
-
-
-
-        local Success,
-
-            Error =
-
-            xpcall(
-
-                function()
-
-
-
-                    ProcessInventoryEgg(
-
-                        EggData,
-
-                        Index,
-
-                        Total
-
-                    )
-
-
-
-                end,
-
-                debug.traceback
-
-            )
-
-
-
-
-
-        if not Success then
-
-
-
-            warn(
-
-                "[INV EGG] ERROR:",
-
-                Error
-
-            )
-
-
-
-            StopFly()
-
-
-
-            MovementOwner =
-
-                nil
-
-
-
-        end
-
-
-
-
-
-        if Index < Total then
-
-
-
-            task.wait(
-
-                LOOP_DELAY
-
-            )
-
-
-
-        end
-
-
-
-    end
-
-
-
-
-
-    print(
-
-        "=========================================="
-
-    )
-
-
-
-    print(
-
-        "[INV EGG] SNAPSHOT COMPLETE"
-
-    )
-
-
-
-    print(
-
-        "[INV EGG] TOTAL PROCESSED:",
-
-        Total
-
-    )
-
-
-
-    print(
-
-        "[INV EGG] NO RESCAN"
-
-    )
-
-
-
-    print(
-
-        "[INV EGG] HATCH SUDAH DILAKUKAN DI AWAL"
-
-    )
-
-
-
-    print(
-
-        "=========================================="
-
-    )
-
-
-
-
-
-    return true
-
-
 
 end
 
 
+print(
+    "=========================================="
+)
 
+print(
+    "[MAIN] SYSTEM STARTED"
+)
 
+print(
+    "=========================================="
+)
 
---==================================================
 
--- MAIN LOOP
+while true do
 
---
+    if not ProcessRunning then
 
--- PRIORITY:
+        ProcessRunning =
+            true
 
---
 
--- #1 FUSE
+        local Success,
+            Error =
+            xpcall(
+                function()
 
--- #2 FIELD EGG
+                    --==================================
+                    -- 1. FUSE
+                    --==================================
 
--- #3 INVENTORY EGG
+                    local FuseSuccess =
+                        TryFuseCycle()
 
---     -> HATCH EXISTING EGG
 
---     -> PLACE INVENTORY EGG
+                    if FuseSuccess then
 
--- #4 TREADMILL
+                        print(
+                            "[MAIN] FUSE SUCCESS"
+                        )
 
---
+                        return
 
--- HATCH TIDAK ADA DI FUSE
+                    end
 
--- HATCH TIDAK ADA SETELAH FIELD PLACE
 
--- HATCH HANYA DI AWAL INVENTORY PROCESS
+                    --==================================
+                    -- 2. FUSE FAILED
+                    --==================================
 
---==================================================
+                    print(
+                        "=========================================="
+                    )
 
+                    print(
+                        "[MAIN] FUSE FAILED / NO FUSE"
+                    )
 
+                    print(
+                        "[MAIN] CHECK HIGHLIGHT..."
+                    )
 
-task.spawn(function()
+                    print(
+                        "=========================================="
+                    )
 
 
+                    --==================================
+                    -- 3. CHECK HIGHLIGHT
+                    --
+                    -- INI ADALAH GATE AUTO EGG LITE
+                    --==================================
 
+                    local HighlightEgg =
+                        GetHighlightedEgg()
 
 
-    print(
+                    if HighlightEgg then
 
-        "=========================================="
+                        print(
+                            "=========================================="
+                        )
 
-    )
+                        print(
+                            "[MAIN] HIGHLIGHT FOUND"
+                        )
 
+                        print(
+                            "[MAIN] TARGET:",
+                            HighlightEgg.Name
+                        )
 
+                        print(
+                            "[MAIN] -> RUN AUTO EGG LITE"
+                        )
 
-    print(
+                        print(
+                            "=========================================="
+                        )
 
-        " AUTO FUSE PET V6"
 
-    )
+                        local AutoEggSuccess =
+                            ProcessAutoEggLite()
 
 
+                        if AutoEggSuccess then
 
-    print(
+                            print(
+                                "[MAIN] AUTO EGG LITE SUCCESS"
+                            )
 
-        "=========================================="
+                        else
 
-    )
+                            warn(
+                                "[MAIN] AUTO EGG LITE FAILED"
+                            )
 
+                        end
 
 
-    print(
+                        return
 
-        " PRIORITY:"
+                    end
 
-    )
 
+                    --==================================
+                    -- 4. NO HIGHLIGHT
+                    --
+                    -- JANGAN JALANKAN AUTO EGG LITE
+                    --==================================
 
+                    print(
+                        "=========================================="
+                    )
 
-    print(
+                    print(
+                        "[MAIN] NO HIGHLIGHT"
+                    )
 
-        " 1. FUSE PET"
+                    print(
+                        "[MAIN] AUTO EGG LITE SKIPPED"
+                    )
 
-    )
+                    print(
+                        "[MAIN] -> INVENTORY EGG"
+                    )
 
+                    print(
+                        "=========================================="
+                    )
 
 
-    print(
+                    --==================================
+                    -- 5. INVENTORY
+                    --==================================
 
-        " 2. FIELD EGG"
+                    if ProcessInventoryEggs() then
 
-    )
+                        return
 
+                    end
 
 
-    print(
+                    --==================================
+                    -- 6. TREADMILL
+                    --==================================
 
-        " 3. INVENTORY EGG"
+                    print(
+                        "[MAIN] NOTHING TO PROCESS"
+                    )
 
-    )
+                    print(
+                        "[MAIN] -> TREADMILL"
+                    )
 
 
+                    EnterTreadmill()
 
-    print(
-
-        "    -> HATCH EXISTING"
-
-    )
-
-
-
-    print(
-
-        "    -> PLACE SNAPSHOT"
-
-    )
-
-
-
-    print(
-
-        " 4. TREADMILL"
-
-    )
-
-
-
-    print(
-
-        "=========================================="
-
-    )
-
-
-
-    print(
-
-        "[MAIN] MAX PET WEIGHT:",
-
-        MAX_PET_WEIGHT
-
-    )
-
-
-
-    print(
-
-        "[MAIN] NORMAL MIN SCALE:",
-
-        NORMAL_MIN_SCALE
-
-    )
-
-
-
-    print(
-
-        "[MAIN] NORMAL MIN PIVOT X:",
-
-        NORMAL_MIN_PIVOT_X
-
-    )
-
-
-
-    print(
-
-        "[MAIN] FLY SPEED:",
-
-        FLY_SPEED
-
-    )
-
-
-
-    print(
-
-        "[MAIN] START DELAY:",
-
-        START_DELAY
-
-    )
-
-
-
-
-
-    task.wait(
-
-        START_DELAY
-
-    )
-
-
-
-
-
-    --==================================================
-
-    -- FIRST EXECUTE HATCH
-
-    --==================================================
-
-
-
-    if not FirstExecuteHatchDone then
-
-        print(
-
-            "=========================================="
-
-        )
-
-
-
-        print(
-
-            "[MAIN] FIRST EXECUTE -> HATCH EXISTING EGGS"
-
-        )
-
-
-
-        print(
-
-            "=========================================="
-
-        )
-
-
-
-        local FirstHatchSuccess, FirstHatchError =
-
-            xpcall(function()
-
-                HatchAllPlacedEggs()
-
-            end, debug.traceback)
-
-
-
-        if not FirstHatchSuccess then
-
-            warn(
-
-                "[MAIN] FIRST EXECUTE HATCH ERROR:",
-
-                FirstHatchError
-
+                end,
+                debug.traceback
             )
 
-        end
 
+        ProcessRunning =
+            false
 
 
-        FirstExecuteHatchDone = true
+        if not Success then
 
+            warn(
+                "=========================================="
+            )
 
+            warn(
+                "[MAIN] ERROR:",
+                Error
+            )
 
-        task.wait(
+            warn(
+                "=========================================="
+            )
 
-            HATCH_RESUME_TIME
 
-        )
+            StopFly()
 
-    end
+            MovementOwner =
+                nil
 
 
+            --================================================
+            -- SAFETY ROOT
+            --================================================
 
+            local Root =
+                GetRoot()
 
 
-    print(
+            if Root then
 
-        "=========================================="
-
-    )
-
-
-
-    print(
-
-        "[MAIN] SYSTEM STARTED"
-
-    )
-
-
-
-    print(
-
-        "=========================================="
-
-    )
-
-
-
-
-
-    while true do
-
-
-
-
-
-        if not ProcessRunning then
-
-
-
-
-
-            ProcessRunning =
-
-                true
-
-
-
-
-
-            local Success,
-
-                Error =
-
-                xpcall(
-
-                    function()
-
-
-
-
-
-                        --==================================
-
-                        -- #1 FUSE
-
-                        --==================================
-
-
-
-                        local FuseResult =
-
-                            TryFuseCycle()
-
-
-
-
-
-                        if FuseResult then
-
-
-
-                            return
-
-
-
-                        end
-
-
-
-
-
-                        --==================================
-
-                        -- #2 FIELD EGG
-
-                        --==================================
-
-
-
-                        print(
-
-                            "=========================================="
-
-                        )
-
-
-
-                        print(
-
-                            "[MAIN] NO FUSE"
-
-                        )
-
-
-
-                        print(
-
-                            "[MAIN] -> CHECK FIELD EGG"
-
-                        )
-
-
-
-
-
-                        local FieldEgg =
-
-                            GetBestEgg()
-
-
-
-
-
-                        if FieldEgg then
-
-
-
-                            print(
-
-                                "[MAIN] FIELD EGG FOUND"
-
-                            )
-
-
-
-                            print(
-
-                                "[MAIN] -> PROCESS FIELD EGG"
-
-                            )
-
-
-
-
-
-                            ProcessFieldEgg(
-
-                                FieldEgg
-
-                            )
-
-
-
-
-
-                            return
-
-
-
-                        end
-
-
-
-
-
-                        --==================================
-
-                        -- #3 INVENTORY EGG
-
-                        --==================================
-
-
-
-                        print(
-
-                            "=========================================="
-
-                        )
-
-
-
-                        print(
-
-                            "[MAIN] NO FIELD EGG"
-
-                        )
-
-
-
-                        print(
-
-                            "[MAIN] -> CHECK INVENTORY EGG"
-
-                        )
-
-
-
-
-
-                        local InventoryResult =
-
-                            ProcessInventoryEggs()
-
-
-
-
-
-                        if InventoryResult then
-
-
-
-                            print(
-
-                                "[MAIN] INVENTORY BATCH COMPLETE"
-
-                            )
-
-
-
-                            return
-
-
-
-                        end
-
-
-
-
-
-                        --==================================
-
-                        -- #4 TREADMILL
-
-                        --==================================
-
-
-
-                        print(
-
-                            "=========================================="
-
-                        )
-
-
-
-                        print(
-
-                            "[MAIN] NO FUSE"
-
-                        )
-
-
-
-                        print(
-
-                            "[MAIN] NO FIELD EGG"
-
-                        )
-
-
-
-                        print(
-
-                            "[MAIN] NO INVENTORY EGG"
-
-                        )
-
-
-
-                        print(
-
-                            "[MAIN] -> TREADMILL"
-
-                        )
-
-
-
-                        print(
-
-                            "=========================================="
-
-                        )
-
-
-
-
-
-                        EnterTreadmill()
-
-
-
-
-
-                    end,
-
-                    debug.traceback
-
-                )
-
-
-
-
-
-            ProcessRunning =
-
-                false
-
-
-
-
-
-            if not Success then
-
-
-
-                warn(
-
-                    "=========================================="
-
-                )
-
-
-
-                warn(
-
-                    "[MAIN] ERROR:",
-
-                    Error
-
-                )
-
-
-
-                warn(
-
-                    "=========================================="
-
-                )
-
-
-
-
-
-                StopFly()
-
-
-
-                MovementOwner =
-
-                    nil
-
-
+                Root.Anchored =
+                    false
 
             end
 
-
-
         end
-
-
-
-
-
-        task.wait(
-
-            LOOP_DELAY
-
-        )
-
-
-
-
 
     end
 
+
+    task.wait(
+        LOOP_DELAY
+    )
+
+end
 
 
 end)
